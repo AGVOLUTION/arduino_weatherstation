@@ -291,7 +291,7 @@ void loop() {
     #if EQUIP_DAVIS_WIND
     case lpmodeWkupReasonDavisWind:
       #if EQUIP_DAVIS_RAIN  // do not ignore Rain Count Interrupts during wind sampling
-      attachInterrupt(DAVIS_RAIN_Pin, lpmodeInterruptDavisRain, FALLING);
+      attachInterrupt(DAVIS_RAIN_Pin, isrDavisRainCountNoLpmode, FALLING);
       #endif
     
       #if DEBUG_SERIAL
@@ -308,6 +308,7 @@ void loop() {
 
       #if EQUIP_DAVIS_RAIN
       detachInterrupt(DAVIS_RAIN_Pin);
+      LowPower.attachInterruptWakeup(DAVIS_RAIN_Pin, lpmodeInterruptDavisRain, FALLING);
       #endif
     break;
     #endif
@@ -328,7 +329,7 @@ void loop() {
         Serial1.print(F("    DAVIS_RAIN current: "));
         Serial1.println(rainCount.current);
         Serial1.print(F("DAVIS_RAIN accumulated: "));
-        Serial1.println(rainAccTmp);
+        Serial1.println(rainAccTmp+1);
       #endif
       }
     break;
@@ -659,6 +660,26 @@ void lpmodeInterruptRTC() {
 #if EQUIP_DAVIS_RAIN
 void lpmodeInterruptDavisRain() {
   wkupReason = lpmodeWkupReasonDavisRain;
+}
+
+void isrDavisRainCountNoLpmode() {
+  uint32_t nowTimeSeconds;
+  rtcGetTimeSeconds(&nowTimeSeconds);
+  #if DEBUG_SERIAL
+  Serial1.println(F("DAVIS_RAIN NO LPMODE"));
+  #endif
+  // Increment rain counter by one
+  uint16_t rainAccTmp = rainCountAccFlash.read();
+  if(davisRainCountIncrement(&rainCount, nowTimeSeconds)) {
+    // Increment accumulated value by one
+    rainCountAccFlash.write(rainAccTmp+1);
+  }
+  #if DEBUG_SERIAL
+    Serial1.print(F("    DAVIS_RAIN current: "));
+    Serial1.println(rainCount.current);
+    Serial1.print(F("DAVIS_RAIN accumulated: "));
+    Serial1.println(rainAccTmp+1);
+  #endif
 }
 #endif
 
