@@ -1,0 +1,14 @@
+boot	18:40:05
+	1	18:40:28
+	2	18:40:38
+	3	18:40:48
+	18	18:43:19	-> ein count verpasst wegen wind sampling
+WIND	18:43:27..18:43:30
+	19	18:43:39
+	35	18:46:20	-> ein count verpasst wegen wind sampling
+WIND	18:46:27..18:46:30
+	36	18:46:40
+	52	18:49:20
+WIND	18:49:27..18:49:30
+	53	18:49:30
+	
