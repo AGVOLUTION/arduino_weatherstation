@@ -30,12 +30,11 @@ SOFTWARE.
 
 typedef struct __rainCount_t {
   uint8_t current;
-  uint16_t acc;
   uint32_t lastCountOstime;
 } rainCount_t;
 
 void setupRainCount(rainCount_t *rainCount);
 
-void davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds);
+bool davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds);
 
 #endif // _RAINCOUNT_H

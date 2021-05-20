@@ -29,14 +29,15 @@ SOFTWARE.
 void setupRainCount(rainCount_t *rainCount) {
   rainCount->lastCountOstime = 0;
   rainCount->current = 0;
-  rainCount->acc = 0;
 }
 
-void davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds) {  
+/* Returns true if rain count has been counted */
+bool davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds) {  
   // count only if there is at  least one second dead time
   if(nowTimeSeconds > rainCount->lastCountOstime) {
     rainCount->current++;
-    rainCount->acc++;
     rainCount->lastCountOstime = nowTimeSeconds;
+    return true;
   }
+  return false;
 }

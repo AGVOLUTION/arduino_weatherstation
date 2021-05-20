@@ -49,6 +49,7 @@ uint8_t ds18b20Address[] = {40, 170, 237, 186, 83, 20, 1, 39};
 #include <SD.h>
 #include <DS18B20.h>
 #include "BlueDot_BME280.h"
+#include <FlashStorage.h>
 
 extern "C" {
   #include "rainCount.h"
@@ -91,6 +92,8 @@ BlueDot_BME280 bme1;
 #if EQUIP_DAVIS_RAIN
 // Rain Count handle
 rainCount_t rainCount;
+FlashStorage(rainCountAccFlash, uint16_t);
+FlashStorage(rainCountAccFlashSeal, uint16_t);
 #endif
 
 #if EQUIP_DAVIS_WIND
@@ -207,6 +210,12 @@ void setup() {
   // Setup raincount peripheral
   #if EQUIP_DAVIS_RAIN
   setupRainCount(&rainCount);
+  // Check if Flash area which stores the rain accumulation is properly initialized
+  if(rainCountAccFlashSeal.read() != 0xaffe) {
+    // Initialize -> set acc counter to zero and destroy seal
+    rainCountAccFlash.write(0);
+    rainCountAccFlashSeal.write(0xaffe);
+  }
   #endif
 
   // Reset RTC
@@ -281,6 +290,10 @@ void loop() {
     
     #if EQUIP_DAVIS_WIND
     case lpmodeWkupReasonDavisWind:
+      #if EQUIP_DAVIS_RAIN  // do not ignore Rain Count Interrupts during wind sampling
+      attachInterrupt(DAVIS_RAIN_Pin, lpmodeInterruptDavisRain, FALLING);
+      #endif
+    
       #if DEBUG_SERIAL
       Serial1.println(F("DAVIS_WIND"));
       #endif
@@ -292,22 +305,32 @@ void loop() {
         Serial1.println(davisWind.spdSamples[davisWind.sample-1]);
         Serial1.println();
       #endif
+
+      #if EQUIP_DAVIS_RAIN
+      detachInterrupt(DAVIS_RAIN_Pin);
+      #endif
     break;
     #endif
     
     #if EQUIP_DAVIS_RAIN
     case lpmodeWkupReasonDavisRain:
+      {
       #if DEBUG_SERIAL
       Serial1.println(F("DAVIS_RAIN"));
       #endif
       // Increment rain counter by one
-      davisRainCountIncrement(&rainCount, nowTimeSeconds);
+      uint16_t rainAccTmp = rainCountAccFlash.read();
+      if(davisRainCountIncrement(&rainCount, nowTimeSeconds)) {
+        // Increment accumulated value by one
+        rainCountAccFlash.write(rainAccTmp+1);
+      }
       #if DEBUG_SERIAL
         Serial1.print(F("    DAVIS_RAIN current: "));
         Serial1.println(rainCount.current);
         Serial1.print(F("DAVIS_RAIN accumulated: "));
-        Serial1.println(rainCount.acc);
+        Serial1.println(rainAccTmp);
       #endif
+      }
     break;
     #endif
     
@@ -407,8 +430,9 @@ void report() {
   #endif
 
   #if EQUIP_DAVIS_RAIN
+  uint16_t rainCntAccTmp = rainCountAccFlash.read();
   payload.rainCount = rainCount.current;
-  payload.rainCountAcc = rainCount.acc;
+  payload.rainCountAcc = rainCntAccTmp;
   // Reset rain counter
   rainCount.current = 0;
   #endif
