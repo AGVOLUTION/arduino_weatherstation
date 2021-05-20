@@ -1,0 +1,23 @@
+Payload
+
+100
+BME280				5 byte
+Davis Aerocone		2+1 byte
+Davis Anemometer	1+2 byte
+
+101
+GPS					4+4 byte
+
+102
+WM0..3				4 * 1 byte (centi bars)
+DS18B20				2 byte
+Leaf Wetness		1 byte
+FDC					4*(1 bis 2) byte
+
+103
+BME77				5 byte
+TCNs 4x				6 byte
+
+104
+Gewicht (g)			4 byte
+DS18B20				2 byte

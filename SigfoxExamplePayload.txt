@@ -1,0 +1,2 @@
+Sigfox example payload
+64ff04363e26000000080000
