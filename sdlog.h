@@ -23,15 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* This payload format is tailored for Sigfox communications.
-   Hence, we limit ourselves to a message size of 12 bytes. */
+#pragma once
 
-#ifndef _SDLOG_H
-#define _SDLOG_H
+#include <SD.h>
 
-typedef struct __sdlog_t {
-  File datafile;
-  uint8_t cardPresent;
-} sdlog_t;
+class SDLog {
+  public:
+    File datafile;
+    bool iniSuccessful;
 
-#endif // _SDLOG_H
+    SDLog(uint8_t cs);
+};

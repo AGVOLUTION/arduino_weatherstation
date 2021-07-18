@@ -26,8 +26,8 @@ SOFTWARE.
 /* This payload format is tailored for Sigfox communications.
    Hence, we limit ourselves to a message size of 12 bytes. */
 
-#ifndef _PAYLOAD_FORMAT_H
-#define _PAYLOAD_FORMAT_H
+#ifndef _PAYLOAD_FORMAT_100_H
+#define _PAYLOAD_FORMAT_100_H
 
 /**************************************************************
  * CONVERSION INFORMATION
@@ -54,28 +54,28 @@ SOFTWARE.
  */
 
 // Payload frame format: Must not exceed 51 for LoRa (!)
-#define PAYLOAD_LENGTH 12
-#define PAYLOAD_VERSION 100
+#define PAYLOAD_LENGTH_100 12
+#define PAYLOAD_VERSION_100 100
 
-enum PLD_FORMAT {
-	PLD_VERSION	= 0,
-	PLD_BME76	= 1,
-	PLD_RAIN	= 6,
-	PLD_RAIN_ACC = 7,
-	PLD_WIND_DIR = 9,
-	PLD_ERROR_BME76	= 9,
-	PLD_ERROR_BME76_POS = 0,
-	PLD_WIND_SPD_AVG = 10,
-	PLD_WIND_SPD_STD = 11
+enum PLD_FORMAT_100 {
+	PLD_VERSION_100	= 0,
+	PLD_BME76_100	= 1,
+	PLD_RAIN_100	= 6,
+	PLD_RAIN_ACC_100 = 7,
+	PLD_WIND_DIR_100 = 9,
+	PLD_ERROR_BME76_100	= 9,
+	PLD_ERROR_BME76_POS_100 = 0,
+	PLD_WIND_SPD_AVG_100 = 10,
+	PLD_WIND_SPD_STD_100 = 11
 };
 
 // Error flags bit positions
-enum ERR_FLAGS {
+enum ERR_FLAGS_100 {
 };
 
 // Structure typedef
 /* Payload */
-typedef struct __attribute__ ((packed)) __payload_t {
+typedef struct __attribute__ ((packed)) __payload_100_t {
   uint8_t version = 100;
   int16_t temperature;
   uint8_t humidity;
@@ -85,6 +85,6 @@ typedef struct __attribute__ ((packed)) __payload_t {
   uint8_t windDirAndError;
   uint8_t windSpdAvg;
   uint8_t windSpdStd;
-} payload_t;
+} payload_100_t;
 
 #endif // _payload_format_h

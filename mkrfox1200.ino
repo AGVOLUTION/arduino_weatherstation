@@ -1,6 +1,6 @@
 /*************
  * TODO
- * 1. There is a dead time for rain count events during wind sampling and SigFox transmission
+ * 1. Leaf wetness detect module equipment
  * 2. Record BME76 error flag
  * 3. If BME76 looses initialization (power cut) -> Detect and Re-Init ? Which registers need to be written?
  * 4. Search for DS18B20 on bus instead of specifying address manually
@@ -17,61 +17,77 @@
  * 9. Input pullups do not really make a difference
  * 10. External Serial1 makes around 70-100uA in Stop Mode and can't simply be 'ended' by Serial.end() (-> requires additional register modifications to restore lowest stop current)
  * 11. USB Serial is not drawing any stop mode current!
- * 12. Include rainCount module: +15-20uA (probably the pull-up resistor)
- * 13. Include davisWind module: No additional cost during stop mode, but speed sample cycles more frequently than packet cycle
+ * 12. Include Rain module: +15-20uA (probably the pull-up resistor)
+ * 13. Include wind module: No additional cost during stop mode, but speed sample cycles more frequently than packet cycle
  * 14. BME280 not initialized or initialized (shutdown): 10uA
  * 
- * Final 3V3 current BME76, Davis Wind, Rain Count, No SD): 64uA. With SD Card: 130uA -> Half-life!
+ * Final 3V3 current BME76, Wind, Rain, No SD): 64uA. With SD Card: 130uA -> Half-life!
+ * 
+ * Energy Consumption Measurement Protocol 17.7.2021. Measured mA at VBAT (Li-Ion 3.8V!). Equipped with: GPS, DS18B20, BME280 0x76, BME 0x77, 1x Watermark + Multiplexer
+ * 1. GPS Looking For Fix 50mA
+ * 2. Stop Mode All mentioned sensors equipped: 
+ * 3. TX Sigfox: 60mA
+ * 4. 
+ * 5. 
+ * 6. 
+ * 7. 
+ * 8. 
  */
 
-uint8_t ds18b20Address[] = {40, 170, 237, 186, 83, 20, 1, 39}; 
 
-#include "Inc/hardware.h"
-#include "Inc/commission/commission.h"
+/* Pin definitions and equipment */
+#include "Inc/hardware.h"     // Contains Pinout
+#include "equipment.h"        // Stores the modules equipped
+#include "Inc/commission/commission.h"  // Configuration of packet interval, ...
 
-/* Check which payload versions to include */
-#define INC_PLD_100 (EQUIP_BME76 | EQUIP_DAVIS_RAIN | EQUIP_DAVIS_WIND)
-#define INC_PLD_104 (EQUIP_WEIGHT | EQUIP_DS18B20)
-
-#if INC_PLD_100
-#include "Inc/payload_format/payload_format.h"
-#endif
-
-#if INC_PLD_104
+/* Payload definition */
+#include "Inc/payload_format/payload_format_100.h"
+#include "Inc/payload_format/payload_format_101.h"
+#include "Inc/payload_format/payload_format_102.h"
+#include "Inc/payload_format/payload_format_103.h"
 #include "Inc/payload_format/payload_format_104.h"
-#endif
 
-// Include basic modules
-#include "ArduinoLowPower.h"
-#include <RTCZero.h>
-#include <SigFox.h>
-#include <Wire.h>
-#include <SD.h>
-#include <DS18B20.h>
-#include "BlueDot_BME280.h"
-#include <FlashStorage.h>
+/* Modules */
+#include "wind.h"             // Wind sensor
+#include "rain.h"             // Rain counter
+#include "bme280.h"           //
+#include "watermark.h"        // Watermark Soil Matrix Potential
+#include <DS18B20.h>          //
+#include "weight.h"           // Weight cells
+#include "debug.h"            // 
+#include "ArduinoLowPower.h"  //
+#include "rtc.h"              //
+#include <SigFox.h>           //
+#include <Wire.h>             //
+#include "sdlog.h"            //
 
-extern "C" {
-  #include "rainCount.h"
-  #include "davisWind.h"
-}
-#include "sdlog.h"
+// The modules equipped
+Equipment equip;
 
 // Declare new payload buffer
-#if INC_PLD_100
-payload_t payload;
-#endif
-
-#if INC_PLD_104
+payload_100_t payload_100;
+payload_101_t payload_101;
+payload_102_t payload_102;
+payload_103_t payload_103;
 payload_104_t payload_104;
-#endif
 
-// wake-up routing
-#define lpmodeWkupReasonSize 3
+// The payload formats to be sent
+typedef struct __txPld_t {
+  uint8_t p100 : 1;
+  uint8_t p101 : 1;
+  uint8_t p102 : 1;
+  uint8_t p103 : 1;
+  uint8_t p104 : 1;
+} txPld_t;
+txPld_t txPld;
+
+// Wake-Up routing
+#define lpmodeWkupReasonSize 4
 typedef enum __lpmodeWkupReason_t {
   lpmodeWkupReasonReport,
-  lpmodeWkupReasonDavisWind,
-  lpmodeWkupReasonDavisRain
+  lpmodeWkupReasonWind,
+  lpmodeWkupReasonRain,
+  lpmodeWkupReasonButton
 } lpmodeWkupReason_t;
 
 // Global flag which is set by interrupt callbacks causing the wake up
@@ -80,194 +96,169 @@ lpmodeWkupReason_t wkupReason = lpmodeWkupReasonReport;
 lpmodeWkupReason_t rtcAlarmEvent = lpmodeWkupReasonReport;
 // Last transmit time
 static uint32_t ostimeLastPacketTx = 0;
+// Packet counter between location packets
+static uint32_t pcktsSinceLastLoc = 25;
 
-// RTC Handle
-RTCZero rtc;
-
-#if EQUIP_BME76
-// BME 0x76 handle
-BlueDot_BME280 bme1;
-#endif
-
-#if EQUIP_DAVIS_RAIN
-// Rain Count handle
-rainCount_t rainCount;
-FlashStorage(rainCountAccFlash, uint16_t);
-FlashStorage(rainCountAccFlashSeal, uint16_t);
-#endif
-
-#if EQUIP_DAVIS_WIND
-// Davis Wind handle
-davisWind_t davisWind;
-#endif
-
-#if EQUIP_SDLOG
-// SD LOG handle
-sdlog_t sdlog;
-#endif
-
-#if EQUIP_DS18B20
-DS18B20 ds(7);
-#endif
+Wind wind(WIND_SPD_Pin, WIND_SUP_Pin, WIND_DIR_Pin); // Wind sensor handle
+static uint16_t windSpdCounter; // Global speed counter for wind speed measurement
+void windIncrementSpdCounter(); // Interrupt callback to increment windSpdCounter
+FlashStorage(rainAccFlash, uint16_t);     // Persistent memory area for rain counts
+FlashStorage(rainAccFlashSeal, uint16_t); // and rain accumulator
+Rain rain(&rainAccFlash, &rainAccFlashSeal); // Rain handle
+Bme280 bme76(0x76); // BME 0x76 handle
+Bme280 bme77(0x77); // BME 0x77 handle
+Watermark watermark(WM_EXC1_Pin, WM_EXC2_Pin, WM_RESISTANCE_Pin, WM_SWITCH_SUP, WM_A_Pin, WM_B_Pin);
+DS18B20 ds(7); // DS18B20 handle
+static uint8_t ds18b20Address[8];
+Weight weight(WEIGHT_EN_Pin, WEIGHT_1_Pin, WEIGHT_2_Pin);
+RtcUser rtc;
 
 void setup() {
-  #if DEBUG_SERIAL
   // Setup UART
-  Serial1.begin(38400);
-  Serial1.println(F("*************************************************"));
-  Serial1.println(F("*A G V O L U T I O N    M A C R O C L I M A T E *"));
-  Serial1.println(F("*************************************************"));
-  #endif
-
-  // Setup Real Time Clock RTC
-  rtc.begin();
+  DEBUG_INIT(9600);
+  DEBUG(F("*************************************************"));
+  DEBUG(F("*A G V O L U T I O N    M I C R O C L I M A T E *"));
+  DEBUG(F("*************************************************"));
 
   uint8_t sigfoxState = SigFox.begin();
 
-  #if DEBUG_SERIAL
-  Serial1.print(F("SigFox State: "));
-  Serial1.println(sigfoxState);
-  #endif
+  DEBUG_VAL(F("SigFox State: "), sigfoxState);
 
   if (!sigfoxState) {
-    // Something is really wrong, try rebooting
-    // Reboot is useful if we are powering the board using an unreliable power source
-    // (eg. solar panels or other energy harvesting methods)
     reboot();
   }
 
   String version = SigFox.SigVersion();
   String ID = SigFox.ID();
   String PAC = SigFox.PAC();
+  DEBUG("SigFox FW version " + version);
+  DEBUG("ID  = " + ID);
+  DEBUG("PAC = " + PAC);
 
-  Serial.begin(38400); // output SigFox parameters over USB serial in any case
-  Serial.println("SigFox FW version " + version);
-  Serial.println("ID  = " + ID);
-  Serial.println("PAC = " + PAC);
+  SigFox.end(); //Send module to standby until we need to send a message
 
-  #if DEBUG_SERIAL
-  Serial1.println("SigFox FW version " + version);
-  Serial1.println("ID  = " + ID);
-  Serial1.println("PAC = " + PAC);
+  // Check Equipment
+  // 1. Assume Wind by default
+  equip.wind = 1;
+
+  // 2. Assume Rain by default
+  equip.rain = 1;
+
+  // 3. Try to switch on GPS and see if characters are received from the GPS module
+  #if !DEBUG_SERIAL // init Serial1 if not already done by debug library
+  Serial1.begin(9600);
   #endif
-
-  //Send module to standby until we need to send a message
-  SigFox.end();
-
-  #if EQUIP_SDLOG
-  // Initialize SD Card
-  if (!SD.begin(SDLOG_CS_Pin)) {
-    #if DEBUG_SERIAL
-    Serial1.println(F("SD card failed or not present."));
-    #endif
-    sdlog.cardPresent = 0;
+  Serial1.read(); // clear receive buffer
+  digitalWrite(GPS_SUP_Pin, HIGH);
+  delay(1000); // Wait for module power up
+  equip.gps = 0; // assume GPS not equipped
+  if(Serial1.available() > 3) { // receive at least four characters from GPS module
+    equip.gps = 1;
   }
-  else {
-    #if DEBUG_SERIAL
-    Serial1.println(F("SD card initialized."));
-    #endif
-    sdlog.cardPresent = 1;
+  while(Serial1.available()) {
+    Serial1.read(); // clear RX buffer
   }
-
-  if(sdlog.cardPresent) {
-    File headerfile = SD.open("header.txt", FILE_WRITE);
-    if (! headerfile) {
-      #if DEBUG_SERIAL
-      Serial1.println(F("Error opening SD headerfile."));
-      #endif
-    }
-    String headerString = "T,RH,P,RAIN/LATEST,RAIN/ACC,WIND/DIR,WIND/SPD/AVG,WIND/SPD/STD";
-    headerfile.println(headerString);
-    String unitString = "°C,%,hPa,COUNTS,COUNTS,°,km h-1,km h-1";
-    headerfile.println(unitString);
-    headerfile.close();
-  
-    sdlog.datafile = SD.open("log.txt", FILE_WRITE);
-    if (! sdlog.datafile) {
-      #if DEBUG_SERIAL
-      Serial1.println(F("Error opening SD logfile."));
-      #endif
-    }
-    #if DEBUG_SERIAL
-      Serial1.println(F("Completed SD setup."));
-    #endif
-  }
+  #if !DEBUG_SERIAL // de-init again to save power
+  Serial1.end();
   #endif
-  
+  digitalWrite(GPS_SUP_Pin, LOW);
+
+  // 4. Both BME280's -> Try to initialize
+  equip.bme76 = bme76.setup();
+  equip.bme77 = bme77.setup();
+
+  // 5. WaterMark equipment is decided by detecting if resistor R3 is equipped
+  // WM_EXC2 floating, WM_EXC1 HIGH/LOW, WM_RESISTANCE ADC
+  // Turn on WM Switch Sup, otherwise WM_RESISTANCE wont be floating towards the MUX
+  pinMode(WM_EXC2_Pin, INPUT);
+  pinMode(WM_EXC1_Pin, OUTPUT);
+  digitalWrite(WM_EXC1_Pin, HIGH);
+  pinMode(WM_SWITCH_SUP, OUTPUT); // turn on Analog Switch
+  digitalWrite(WM_SWITCH_SUP, HIGH);
+  analogReadResolution(12);
+  delay(20); // wait until voltage level stabilization
+  int wmEquipTestValHigh = analogRead(WM_RESISTANCE_Pin);
+  digitalWrite(WM_EXC1_Pin, LOW);
+  delay(20); // wait until voltage level stabilization
+  int wmEquipTestValLow = analogRead(WM_RESISTANCE_Pin);
+  if((wmEquipTestValHigh > 3950) && (wmEquipTestValLow < 150)) { // require high and low levels
+    equip.watermark = 1;
+  }
+  pinMode(WM_EXC2_Pin, OUTPUT);
+  digitalWrite(WM_EXC2_Pin, LOW);
+  digitalWrite(WM_SWITCH_SUP, LOW); // Analog switch off
+
+  // 6. Scan for DS18B20 and obtain address
+  equip.ds18b20 = (ds.getNumberOfDevices() > 0);
+  if(equip.ds18b20) {
+    while(ds.selectNext()) {
+      ds.getAddress(ds18b20Address);
+    }
+  }
+
+  // 7. Assume Weight Cells by default
+  equip.weight1 = 1;
+  equip.weight2 = 1;
+
+  // TODO DETECT GPS or LEAF-WET (at the moment -> neglect leaf wet)
+  // TODO DETECT CLIMAVI
+
+  equip.print();
+  equip.mutuallyExclude();
+  equip.print();
+
+  // Determine which payload formats shall be transmitted
+  txPld.p100 = equip.bme76 | equip.rain | equip.wind;
+  txPld.p101 = equip.gps;
+  txPld.p102 = equip.watermark | equip.leafWet | equip.bme77;
+  txPld.p103 = equip.climavi;
+  txPld.p104 = equip.weight1 | equip.weight2 | equip.ds18b20;
+
   // Setup GPIOs
   setupGpios();
 
   // Attach wakeup interrupts
   attachWakeupInterrupts();
 
-  // Setup BME280
-  #if EQUIP_BME76
-  setupBME280(&bme1);
-    #if DEBUG_SERIAL
-      Serial1.println(F("BME setup completed."));
-    #endif
-  #endif
-  // Setup raincount peripheral
-  #if EQUIP_DAVIS_RAIN
-  setupRainCount(&rainCount);
-  // Check if Flash area which stores the rain accumulation is properly initialized
-  if(rainCountAccFlashSeal.read() != 0xaffe) {
-    // Initialize -> set acc counter to zero and destroy seal
-    rainCountAccFlash.write(0);
-    rainCountAccFlashSeal.write(0xaffe);
-  }
-  #endif
-
   // Reset RTC
-  rtcReset();
-
-  #if DEBUG_SERIAL
-  Serial1.println(F("Setup completed."));
-  Serial1.println();
-  #endif
+  rtc.reset();
 }
 
 void setupGpios() {
-  #if EQUIP_DAVIS_RAIN
-  pinMode(DAVIS_RAIN_Pin, INPUT_PULLUP);
-  // attachInterrupt(digitalPinToInterrupt(DAVIS_RAIN_Pin), davisRainCountIncrement, FALLING);
-  #endif
+  // Rain Interrupt pin as input
+  if(equip.rain) pinMode(RAIN_Pin, INPUT_PULLUP);
 
-  #if EQUIP_DAVIS_WIND
-  pinMode(DAVIS_WIND_SPD_Pin, INPUT_PULLUP);
-  pinMode(DAVIS_WIND_SUP_Pin, OUTPUT);
-  digitalWrite(DAVIS_WIND_SUP_Pin, LOW);
-  #endif
+  // Wind Poti Supply as output, velocity counter as input
+  if(equip.wind) wind.init();
 
-  /* Use leaf wetness connector to output 3.3V and measure the voltage of the weight cell */
-  #if EQUIP_WEIGHT
-  pinMode(WEIGHT_SUP_Pin, OUTPUT);
-  digitalWrite(WEIGHT_SUP_Pin, LOW);
-  #endif
+  // GPS enable output and disable GPS module
+  if(equip.gps) {
+    pinMode(GPS_SUP_Pin, OUTPUT);
+    digitalWrite(GPS_SUP_Pin, LOW);
+  }
+
+  if(equip.leafWet) {
+    pinMode(LEAFWET_SUP_Pin, OUTPUT);
+    digitalWrite(LEAFWET_SUP_Pin, LOW);
+  }
+
+  if(equip.weight1 || equip.weight2) weight.init();
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
+
+  pinMode(BUTTON_Pin, INPUT_PULLUP);
 }
 
 void attachWakeupInterrupts() {
   // Attach wake-up interrupts during LPMODE
-  #if EQUIP_DAVIS_RAIN
-  LowPower.attachInterruptWakeup(DAVIS_RAIN_Pin, lpmodeInterruptDavisRain, FALLING);
-  #endif
+  if(equip.rain) {
+    LowPower.attachInterruptWakeup(RAIN_Pin, lpmodeInterruptRain, FALLING);
+  }
+  if(equip.weight1 || equip.weight2) {
+    LowPower.attachInterruptWakeup(BUTTON_Pin, lpmodeInterruptButton, FALLING);
+  }
   LowPower.attachInterruptWakeup(RTC_ALARM_WAKEUP, lpmodeInterruptRTC, CHANGE);
-}
-
-uint32_t rtcGetTimeSeconds(uint32_t *t) {
-  *t = rtc.getSeconds() + 60*(rtc.getMinutes() + 60*(rtc.getHours() + 24*rtc.getDay() ) );
-}
-
-void rtcReset() {
-  rtc.setSeconds(0);
-  rtc.setMinutes(0);
-  rtc.setHours(0);
-  rtc.setDay(1);
-  rtc.setMonth(1);
-  rtc.setYear(1);
 }
 
 void loop() {
@@ -275,65 +266,70 @@ void loop() {
   lpmodeEnterStop();
 
   // After wakeup, act based on return value
-  //Serial1.print(F("wkupReason="));
-  //Serial1.println(wkupReason);
+  DEBUG_VAL(F("wkupReason"), wkupReason);
   uint32_t nowTimeSeconds;
-  rtcGetTimeSeconds(&nowTimeSeconds);
+  rtc.getTimeSeconds(&nowTimeSeconds);
   
   switch(wkupReason) {
     case lpmodeWkupReasonReport:
-      #if DEBUG_SERIAL
-      Serial1.println(F("REPORT"));
-      #endif
+      if(equip.rain) attachInterrupt(RAIN_Pin, isrRainCountNoLpmode, FALLING);  // do not ignore Rain Count Interrupts during report
+      
+      DEBUG(F("REPORT"));
       report();
-    break;
-    
-    #if EQUIP_DAVIS_WIND
-    case lpmodeWkupReasonDavisWind:
-      #if EQUIP_DAVIS_RAIN  // do not ignore Rain Count Interrupts during wind sampling
-      attachInterrupt(DAVIS_RAIN_Pin, isrDavisRainCountNoLpmode, FALLING);
-      #endif
-    
-      #if DEBUG_SERIAL
-      Serial1.println(F("DAVIS_WIND"));
-      #endif
-      davisWindAddSpdSample(&davisWind);
-      #if DEBUG_SERIAL
-        Serial1.print(F("       davisWind->sample: "));
-        Serial1.println(davisWind.sample-1);
-        Serial1.print(F("davisWind->spdSamples[i]: "));
-        Serial1.println(davisWind.spdSamples[davisWind.sample-1]);
-        Serial1.println();
-      #endif
 
-      #if EQUIP_DAVIS_RAIN
-      detachInterrupt(DAVIS_RAIN_Pin);
-      LowPower.attachInterruptWakeup(DAVIS_RAIN_Pin, lpmodeInterruptDavisRain, FALLING);
-      #endif
+      if(equip.rain) {
+        detachInterrupt(RAIN_Pin); // The attachInterrupt is resetting the LowPower wakeupInterrupt functionality
+        LowPower.attachInterruptWakeup(RAIN_Pin, lpmodeInterruptRain, FALLING);
+      }
     break;
-    #endif
     
-    #if EQUIP_DAVIS_RAIN
-    case lpmodeWkupReasonDavisRain:
-      {
-      #if DEBUG_SERIAL
-      Serial1.println(F("DAVIS_RAIN"));
-      #endif
-      // Increment rain counter by one
-      uint16_t rainAccTmp = rainCountAccFlash.read();
-      if(davisRainCountIncrement(&rainCount, nowTimeSeconds)) {
-        // Increment accumulated value by one
-        rainCountAccFlash.write(rainAccTmp+1);
+    case lpmodeWkupReasonWind:
+      if(equip.rain) attachInterrupt(RAIN_Pin, isrRainCountNoLpmode, FALLING);  // do not ignore Rain Count Interrupts during wind sampling
+    
+      if(equip.wind) {
+        DEBUG(F("WIND"));
+        // Take measurement
+        windSpdCounter = 0;
+        attachInterrupt(WIND_SPD_Pin, windIncrementSpdCount, FALLING);
+        delay(3000); // active wait
+        detachInterrupt(WIND_SPD_Pin);
+      
+        /* Convert average pulse frequency to wind speed
+         * v[km/h] = f[Hz] * 2.25 * 1.61
+         * Explanation:
+         * 2.25: Davis Anemometer pulse generator property
+         * 1.61 mph -> km/h
+         * Sampling time: 3 seconds
+         */
+        float windSpdSmpl = windSpdCounter / 3.0 * 2.25 * 1.61;
+        wind.addSpdSample(windSpdSmpl);
+        DEBUG_VAL(F("       wind.sample"), wind.sample-1);
+        DEBUG_VAL(F("wind.spdSamples[i]"), wind.spdSamples[wind.sample-1]);
+        DEBUG("");
       }
-      #if DEBUG_SERIAL
-        Serial1.print(F("    DAVIS_RAIN current: "));
-        Serial1.println(rainCount.current);
-        Serial1.print(F("DAVIS_RAIN accumulated: "));
-        Serial1.println(rainAccTmp+1);
-      #endif
+
+      if(equip.rain) {
+        detachInterrupt(RAIN_Pin); // The attachInterrupt is resetting the LowPower wakeupInterrupt functionality
+        LowPower.attachInterruptWakeup(RAIN_Pin, lpmodeInterruptRain, FALLING);
       }
     break;
-    #endif
+    
+    case lpmodeWkupReasonRain:
+      {
+        if(equip.rain) {
+          DEBUG(F("RAIN"));
+          // Increment rain counter by one
+          rain.increment(nowTimeSeconds);
+          
+          DEBUG_VAL(F("    RAIN current"), rain.getCounts());
+          DEBUG_VAL(F("RAIN accumulated"), rain.getAccCounts());
+        }
+      }
+    break;
+
+    case lpmodeWkupReasonButton:
+    if(equip.weight1 || equip.weight2) weight.tara();
+    break;
     
     default:
     // do nothing
@@ -345,129 +341,231 @@ void loop() {
  *
  */
 void report() {
-  #if DEBUG_SERIAL
-  Serial1.println(F("SigFox Module Boot"));
-  #endif
+  // Checking whether we are supposed to transmit a location package
+  // Send packet once a day
+  txPld.p101 = 0; // let's assume not to transmit GPS data, because at least something will go wrong (GPS Fixture, Module comms, etc.). Set txPld.p101 = 1 only if position data is available.
+  if(equip.gps && ((PACKET_INTERVAL_INITIAL * pcktsSinceLastLoc) > 24*60)) {
+    pcktsSinceLastLoc = 0;
+    uint32_t tBeg, tNow;
+    rtc.getTimeSeconds(&tBeg);
+    rtc.getTimeSeconds(&tNow);
+
+    // Enable GPS
+    digitalWrite(GPS_SUP_Pin, HIGH);
+    #if !DEBUG_SERIAL // Init Serial1 module if not otherwize initialized by the Debug Library
+    Serial1.begin(9600);
+    #endif
+    String line;
+    float lat, lon;
+    uint8_t hh, mm, ss; // UTC time via GPS module
+    String latOrient, lonOrient, latStr, lonStr;
+    DEBUG(F("Waiting for GPS Fixture."));
+    while((tNow - tBeg) < 90) { // wait 90s for a fixture
+      rtc.getTimeSeconds(&tNow);
+      line = Serial1.readStringUntil('\n'); // read a single line
+      /* The NMEA Global Positioning System Fix Data (GGA) format:
+       * $GPGGA,HHMMSS.ss,BBBB.BBBB,b,LLLLL.LLLL,l,Q,NN,D.D,H.H,h,G.G,g,A.A,RRRR*PP or
+       * $GPRMC,HHMMSS,A,BBBB.BBBB,b,LLLLL.LLLL,l,GG.G,RR.R,DDMMYY,M.M,m,F*PP
+       * -> Use substrings due to fixed-width string format
+       */
+
+      // Search for $GPRMC command
+      if(!line.substring(0, 6).equals("$GPRMC")) continue; // skip
+      if(!line.substring(18, 19).equals("A")) continue; // character at pos. 18 has to be A=OK (V=WARNING). Otherwise -> no position fix
+      DEBUG(line); // forward line to Debug console
+
+      // Extract UTC time
+      hh = line.substring(7, 9).toInt();
+      mm = line.substring(9, 11).toInt();
+      ss = line.substring(11, 13).toInt();
+      #if DEBUG_SERIAL
+      Serial1.print("UTC Time: "); Serial1.print(hh, DEC); Serial1.print(":"); Serial1.print(mm, DEC); Serial1.print(":"); Serial1.println(ss, DEC);
+      #endif
+      
+      // Extract position information
+      latStr = line.substring(20,29);
+      latOrient = line.substring(30, 31);
+      /* Convert the latitude ddmm.mmmm format to decimal degrees. 60 angular minutes = 1 degree */
+      lat = latStr.substring(0,2).toFloat() + latStr.substring(2).toFloat() / 60.0f;
+
+      lonStr = line.substring(32, 42);
+      lonOrient = line.substring(43, 44);
+      /* Convert the longitude dddmm.mmmm format to decimal degrees. 60 angular minutes = 1 degree */
+      lon = lonStr.substring(0,3).toFloat() + lonStr.substring(3).toFloat() / 60.0f;
+
+      // Check boundaries
+      if((lat >= 0.0f) && (lat <= 90.0f) && (lon >= 0.0f) && (lon <= 180.0f)) {
+        // Convert orientation characters to sign (Lat: N+, S-, Lon: E+, W-)
+        if(latOrient.equals("S")) lat *= (-1.0f);
+        if(lonOrient.equals("W")) lon *= (-1.0f);
+        payload_101.latitude = lat;
+        payload_101.longitude = lon;
+        txPld.p101 = 1; // Transmit Position Payload!
+        DEBUG_VAL_ARG("Latitude", lat, 6);
+        DEBUG_VAL_ARG("Longitude", lon, 6);
+        break; // Leave after first position fix
+      }
+    }
+    if((tNow - tBeg) >= 90) {
+      DEBUG(F("GPS FIXTURE TIMEOUT"));
+    }
+    #if !DEBUG_SERIAL
+    Serial1.end();
+    #endif
+    digitalWrite(GPS_SUP_Pin, LOW); // Disable module
+  }
+
+  DEBUG(F("SigFox Module Boot"));
 
   // Start the module
   SigFox.begin();
-  //#if DEBUG_LED
+  //#if debug_LED // SigFox Module not really working without Debug LED ?
   SigFox.debug();
   //#endif
   
   // Submit sensor read tasks
-  #if EQUIP_BME76
-  #if DEBUG_SERIAL
-  Serial1.println(F("Trigger BME280"));
-  #endif
-  bme1.writeCTRLMeas(); // Trigger BME280 measurement by writing mode parameter (set to force) again
-  #endif
+  if(equip.bme76) {
+    DEBUG(F("Trigger BME280 0x76"));
+    bme76.handle.writeCTRLMeas(); // Trigger BME280 measurement by writing mode parameter (set to force) again
+  }
 
-  // Turn on voltage supply for wind poti
-  #if EQUIP_DAVIS_WIND
-  #if DEBUG_SERIAL
-  Serial1.println(F("Turn on DAVIS_WIND_SUP"));
-  #endif
-  digitalWrite(DAVIS_WIND_SUP_Pin, HIGH);
-  #endif
+  if(equip.bme77) {
+    DEBUG(F("Trigger BME280 0x77"));
+    bme77.handle.writeCTRLMeas(); // Trigger BME280 measurement by writing mode parameter (set to force) again
+  }
 
   // Turn on voltage supply for weight cell
-  #if EQUIP_WEIGHT
-  #if DEBUG_SERIAL
-  Serial1.println(F("Turn on WEIGHT_SUP"));
-  #endif
-  digitalWrite(WEIGHT_SUP_Pin, HIGH);
-  #endif
+  if(equip.weight1 || equip.weight2) weight.enable();
 
-  // Wait (BME280 measurement, WIND supply stabilization, WEIGHT supply stabilization, SigFox boot (at least 100ms))
-  delay(10000);
+  // Take soil matrix potential measurements
+  if(equip.watermark) {
+    watermark.activate();
+    for(uint8_t ch = 0; ch < 4; ch++) {
+      payload_102.matrixPotential[ch] = watermark.matrixPotentialCbars(ch);
+    }
+    watermark.deactivate();
+  }
 
-  // Read davis wind poti voltage
-  #if EQUIP_DAVIS_WIND
-  #if DEBUG_SERIAL
-  Serial1.println(F("Read DAVIS_WIND_DIR"));
-  #endif
-  double davisWindPoti;
-  analogReadResolution(10);
-  davisWindPoti = analogRead(DAVIS_WIND_DIR_Pin);
-  digitalWrite(DAVIS_WIND_SUP_Pin, LOW);
-  // ADC resolution is set to 10 bit -> 0 = 0°, 1023 = 360°
-  double davisWindDirDeg = davisWindPoti / 1023.0 * 360.0;
-  #endif
+  // Read leaf wetness analog value
+  if(equip.leafWet) {
+    digitalWrite(LEAFWET_SUP_Pin, HIGH);
+    delay(50);
+    analogReadResolution(8);
+    payload_102.leafWetness = analogRead(LEAFWET_SIG_Pin);
+    digitalWrite(LEAFWET_SUP_Pin, LOW);
+  }
 
   // Read DS18B20 temperature sensor
-  #if EQUIP_DS18B20
-  if(ds.select(ds18b20Address)) { //check if device can be found on 1-Wire bus
-    payload_104.temperature = round(ds.getTempC() * 100);
+  if(equip.ds18b20) {
+    if(ds.select(ds18b20Address)) { //check if device can be found on 1-Wire bus
+      int16_t temperature = round(ds.getTempC() * 100);
+      payload_101.temperature = temperature;
+      payload_104.temperature = temperature;
+    }
   }
-  #endif
+
+  // Wait (BME280 measurement, WEIGHT supply stabilization, SigFox boot (at least 100ms))
+  delay(100);
+
+  // Read wind poti voltage + sum up speed measurements
+  if(equip.wind) {
+    DEBUG(F("Read WIND_DIR"));
+    payload_100.windDirAndError = (uint8_t)(round(wind.direction() / 4.0)) << 1; // in 4° steps
+    payload_100.windSpdAvg = round(wind.spdAvg());
+    payload_100.windSpdStd = round(wind.spdStd());
+    // Reset wind sample counter
+    wind.sample = 0;
+  }
 
   // Read weight cell voltage
-  #if EQUIP_WEIGHT
-  #if DEBUG_SERIAL
-  Serial1.println(F("Read WEIGHT_SIG"));
-  #endif
-  double weightVoltagePos;
-  double weightVoltageNeg;
-  analogReadResolution(12); // MKR series has up to 12 bits ADC resolution -> 4096 divisions
-  weightVoltagePos = analogRead(WEIGHT_SIG_POS_Pin);
-  weightVoltageNeg = analogRead(WEIGHT_SIG_NEG_Pin);
-  Serial1.print("Weight cell ADC (+):");
-  Serial1.println(weightVoltagePos);
-  Serial1.print("Weight cell ADC (-):");
-  Serial1.println(weightVoltageNeg);
-  digitalWrite(WEIGHT_SUP_Pin, LOW);
-  // ADC resolution is set to 12 bit -> 0 = 0g, 4095 = 150kg
-  float weightKilograms = (weightVoltagePos - weightVoltageNeg) / 4095.0 * 150.0;
+  if(equip.weight1) {
+    // save to payload
+    payload_104.weight1 = weight.getGrams(0);
+  }
 
-  // save to payload
-  payload_104.weight = weightKilograms;
-  #endif
+  if(equip.weight2) {
+    // save to payload
+    payload_104.weight2 = weight.getGrams(1);
+  }
 
-  #if EQUIP_BME76
-  payload.temperature = round(bme1.readTempC() * 100); // in 0.01 °C
-  payload.humidity = round(bme1.readHumidity()); // in percent
-  payload.pressure = round(bme1.readPressure() * 10); // in 0.1 hPa
-  #endif
+  if(equip.weight1 || equip.weight2) {
+    weight.disable();
+  }
 
-  #if EQUIP_DAVIS_RAIN
-  uint16_t rainCntAccTmp = rainCountAccFlash.read();
-  payload.rainCount = rainCount.current;
-  payload.rainCountAcc = rainCntAccTmp;
-  // Reset rain counter
-  rainCount.current = 0;
-  #endif
+  if(equip.bme76) {
+    payload_100.temperature = round(bme76.handle.readTempC() * 100); // in 0.01 °C
+    payload_100.humidity = round(bme76.handle.readHumidity()); // in percent
+    payload_100.pressure = round(bme76.handle.readPressure() * 10); // in 0.1 hPa
+    payload_100.windDirAndError &= ~1; // clear error flag
+  }
+  else { // set error flag
+    payload_100.windDirAndError |= 1;
+  }
 
-  #if EQUIP_DAVIS_WIND
-  payload.windDirAndError = (uint8_t)(round(davisWindDirDeg / 4.0)) << 1; // in 4° steps
-  payload.windSpdAvg = round(davisWindSpdAvg(&davisWind));
-  payload.windSpdStd = round(davisWindSpdStd(&davisWind));
-  // Reset wind sample counter
-  davisWind.sample = 0;
-  #endif
+  if(equip.bme77) {
+    payload_102.temperature = round(bme77.handle.readTempC() * 100); // in 0.01 °C
+    payload_102.humidity = round(bme77.handle.readHumidity()); // in percent
+    payload_102.pressure = round(bme77.handle.readPressure() * 10); // in 0.1 hPa
+  }
 
-  #if DEBUG_SERIAL
-  Serial1.println();
-  Serial1.println(F("Payload Message:"));
+  if(equip.rain) {
+    payload_100.rainCount = rain.getCounts();
+    payload_100.rainCountAcc = rain.getAccCounts();
+    rain.resetCounts();
+  }
 
-  #if INC_PLD_100
-  Serial1.println("    Temperature: " + String(payload.temperature));
-  Serial1.println("       Humidity: " + String(payload.humidity));
-  Serial1.println("       Pressure: " + String(payload.pressure));
-  Serial1.println("      rainCount: " + String(payload.rainCount));
-  Serial1.println("   rainCountAcc: " + String(payload.rainCountAcc));
-  Serial1.println("windDirAndError: " + String(payload.windDirAndError));
-  Serial1.println("     windSpdAvg: " + String(payload.windSpdAvg));
-  Serial1.println("     windSpdStd: " + String(payload.windSpdStd));
-  #endif
-  
-  #if INC_PLD_104
-  Serial1.println("         Weight: " + String(payload_104.weight));
-  Serial1.println("   DS18B20 Temp: " + String(payload_104.temperature));
-  #endif
-  
-  Serial1.println();
-  #endif
+  DEBUG("");
+
+  if(txPld.p100) {
+    DEBUG(F("Payload 100:"));
+    DEBUG_VAL(F("    Temperature"), payload_100.temperature);
+    DEBUG_VAL(F("       Humidity"), payload_100.humidity);
+    DEBUG_VAL(F("       Pressure"), payload_100.pressure);
+    DEBUG_VAL(F("      rainCount"), payload_100.rainCount);
+    DEBUG_VAL(F("   rainCountAcc"), payload_100.rainCountAcc);
+    DEBUG_VAL(F("windDirAndError"), payload_100.windDirAndError);
+    DEBUG_VAL(F("     windSpdAvg"), payload_100.windSpdAvg);
+    DEBUG_VAL(F("     windSpdStd"), payload_100.windSpdStd);
+    DEBUG();
+  }
+
+  if(txPld.p101) {
+    DEBUG(F("Payload 101:"));
+    DEBUG_VAL(F("       Latitude"), payload_101.latitude);
+    DEBUG_VAL(F("      Longitude"), payload_101.longitude);
+    DEBUG_VAL(F("        DS18B20"), payload_101.temperature);
+    DEBUG();
+  }
+
+  if(txPld.p102) {
+    DEBUG(F("Payload 102:"));
+    DEBUG_VAL(F("    Watermark 0"), payload_102.matrixPotential[0]);
+    DEBUG_VAL(F("    Watermark 1"), payload_102.matrixPotential[1]);
+    DEBUG_VAL(F("    Watermark 2"), payload_102.matrixPotential[2]);
+    DEBUG_VAL(F("    Watermark 3"), payload_102.matrixPotential[3]);
+    DEBUG_VAL(F("   Leaf Wetness"), payload_102.leafWetness);
+    DEBUG_VAL(F("    Temperature"), payload_102.temperature);
+    DEBUG_VAL(F("       Humidity"), payload_102.humidity);
+    DEBUG_VAL(F("       Pressure"), payload_102.pressure);
+    DEBUG();
+  }
+
+  if(txPld.p103) {
+    DEBUG(F("Payload 103:"));
+    DEBUG_VAL(F("        FDC CH0"), payload_103.fdcCh[0]);
+    DEBUG_VAL(F("        FDC CH1"), payload_103.fdcCh[1]);
+    DEBUG_VAL(F("        FDC CH2"), payload_103.fdcCh[2]);
+    DEBUG_VAL(F("        FDC CH3"), payload_103.fdcCh[3]);
+    DEBUG();
+  }
+
+  if(txPld.p104) {
+    DEBUG(F("Payload 104:"));
+    DEBUG_VAL(F("       Weight 1"), payload_104.weight1);
+    DEBUG_VAL(F("       Weight 2"), payload_104.weight2);
+    DEBUG_VAL(F("    Temperature"), payload_104.temperature);
+    DEBUG();
+  }
 
   // Print raw hex payload message
   #if FALSE
@@ -490,89 +588,92 @@ void report() {
   SigFox.status();
   delay(1);
 
-#if !DEBUG_SKIP_TX
+  #if !DEBUG_SKIP_TX
   int ret;
-  // Transmit Sigfox message
-  #if INC_PLD_100
-  SigFox.beginPacket();
-  SigFox.write((uint8_t*)&payload, 12);
-  // May take 10 seconds
-  ret = SigFox.endPacket();
 
-    #if DEBUG_SERIAL
-    Serial1.print(F("Sigfox status (0=OK): "));
-    Serial1.println(ret, DEC);
-    #endif
-  #endif
+  // Transmit Sigfox Messages
+  if(txPld.p100) {
+    SigFox.beginPacket();
+    SigFox.write((uint8_t*)&payload_100, PAYLOAD_LENGTH_100);
+    // May take 10 seconds
+    ret = SigFox.endPacket();
+    DEBUG_VAL(F("Sigfox status (PLD 100) (0=OK)"), ret);
+  }
 
-  // Transmit Sigfox message Payload version 104
-  #if INC_PLD_104
-    // Transmit Sigfox message
+  if(txPld.p101) {
+    SigFox.beginPacket();
+    SigFox.write((uint8_t*)&payload_101, PAYLOAD_LENGTH_101);
+    // May take 10 seconds
+    ret = SigFox.endPacket();
+    DEBUG_VAL(F("Sigfox status (PLD 101) (0=OK)"), ret);
+  }
+
+  if(txPld.p102) {
+    SigFox.beginPacket();
+    SigFox.write((uint8_t*)&payload_102, PAYLOAD_LENGTH_102);
+    // May take 10 seconds
+    ret = SigFox.endPacket();
+    DEBUG_VAL(F("Sigfox status (PLD 102) (0=OK)"), ret);
+  }
+
+  if(txPld.p103) {
+    SigFox.beginPacket();
+    SigFox.write((uint8_t*)&payload_103, PAYLOAD_LENGTH_103);
+    // May take 10 seconds
+    ret = SigFox.endPacket();
+    DEBUG_VAL(F("Sigfox status (PLD 103) (0=OK)"), ret);
+  }
+
+  if(txPld.p104) {
     SigFox.beginPacket();
     SigFox.write((uint8_t*)&payload_104, PAYLOAD_LENGTH_104);
     // May take 10 seconds
     ret = SigFox.endPacket();
-  
-    #if DEBUG_SERIAL
-    Serial1.print(F("Sigfox status (PLD 104) (0=OK): "));
-    Serial1.println(ret, DEC);
-    #endif
+    DEBUG_VAL(F("Sigfox status (PLD 104) (0=OK)"), ret);
+  }
   #endif
-#endif
+
   SigFox.end();
 
-  // Write log string to SD Card
-  #if EQUIP_SDLOG
-    String sep = "\t";
-    String logString = String(payload.temperature / 100.0) + sep + String(payload.humidity) + sep + String(payload.pressure / 10.0) + sep + String(payload.rainCount) + sep + String(payload.rainCountAcc) + sep + String( (payload.windDirAndError >> 1) * 4) + sep + String(payload.windSpdAvg) + sep + String(payload.windSpdStd);
-    sdlog.datafile.println(logString);
-    sdlog.datafile.flush();
-  #endif
-
   // Set internal time to zero after each data packet
-  rtcReset();
+  rtc.reset();
   // Rest RAIN count time stamp together with RTC. Otherwise the RTC stamp will never be larger than last rain count stamp.
-  rainCount.lastCountOstime = 0;
-  rtcGetTimeSeconds(&ostimeLastPacketTx);
+  rain.lastCountOstime = 0;
+  rtc.getTimeSeconds(&ostimeLastPacketTx);
+  pcktsSinceLastLoc++;
 }
 
 /*  Call this method to enter low power state.
  *  RTC wake up is configured automatically.
  */
 void lpmodeEnterStop() {
-  #if DEBUG_SERIAL
-  Serial1.println();
-  Serial1.println(F("Entering LPMODE"));
+  DEBUG();
+  DEBUG(F("Entering LPMODE"));
   
   uint32_t nowTimeSeconds;
-  Serial1.print(F("       RTC Time: "));
-  rtcGetTimeSeconds(&nowTimeSeconds);
-  Serial1.println((int)nowTimeSeconds, DEC);
-  #endif
+  rtc.getTimeSeconds(&nowTimeSeconds);
+  DEBUG_VAL(F("       RTC Time"), (int)nowTimeSeconds);
   
   // Switch off builtin LED to signal low power mode
   digitalWrite(LED_BUILTIN, LOW);
   // calculate time delta until next wakeup alarm
   int delayUntilNextWakeup = lpmodeScheduleWakeup();
   delayUntilNextWakeup *= 1000; // from milliseconds to seconds
-  #if DEBUG_NO_LPMODE
+  #if debug_NO_LPMODE
   delay(delayUntilNextWakeup);
   #else
   // enter low power mode and schedule wakeup alert
   LowPower.sleep(delayUntilNextWakeup);
   #endif
 
-  #if DEBUG_LED
+  #if debug_LED
   digitalWrite(LED_BUILTIN, HIGH);
   #endif
   
-  #if DEBUG_SERIAL
-  Serial1.println(F("Waking up from LPMODE"));
-  Serial1.print(F("       RTC Time: "));
-  rtcGetTimeSeconds(&nowTimeSeconds);
-  Serial1.println(nowTimeSeconds, DEC);
-  Serial1.println();
-  #endif
+  DEBUG(F("Waking up from LPMODE"));
+  rtc.getTimeSeconds(&nowTimeSeconds);
+  DEBUG_VAL(F("       RTC Time"), nowTimeSeconds);
+  DEBUG();
   return;
 }
 
@@ -581,12 +682,13 @@ int lpmodeScheduleWakeup() {
   // Specify a mapping from list indizes (0..N) -> lpmodeWkupReason ENUM
   lpmodeWkupReason_t mp[lpmodeWkupReasonSize];
   mp[lpmodeWkupReasonReport] = lpmodeWkupReasonReport;
-  mp[lpmodeWkupReasonDavisWind] = lpmodeWkupReasonDavisWind;
-  mp[lpmodeWkupReasonDavisRain] = lpmodeWkupReasonDavisRain;
+  mp[lpmodeWkupReasonWind] = lpmodeWkupReasonWind;
+  mp[lpmodeWkupReasonRain] = lpmodeWkupReasonRain;
+  mp[lpmodeWkupReasonButton] = lpmodeWkupReasonButton;
   
   // Get current time. RTC counts seconds but is reset after each packet cycle.
   uint32_t nowTimeSeconds;
-  rtcGetTimeSeconds(&nowTimeSeconds);
+  rtc.getTimeSeconds(&nowTimeSeconds);
 
   // The package interval in seconds
   uint16_t packageIntervalSeconds = PACKET_INTERVAL_INITIAL * 60;
@@ -603,24 +705,17 @@ int lpmodeScheduleWakeup() {
   if ( (nowTimeSeconds - ostimeLastPacketTx) >= packageIntervalSeconds) {
     next[lpmodeWkupReasonReport] = nowTimeSeconds + 1;
   }
-  #if DEBUG_SERIAL
-  Serial1.print(F("    Next REPORT: "));
-  Serial1.println(next[lpmodeWkupReasonReport], DEC);
-  #endif
+  DEBUG_VAL(F("    Next REPORT"), next[lpmodeWkupReasonReport]);
 
-  /* Schedule DAVIS_WIND */
-#if EQUIP_DAVIS_WIND
-  // sample every 30s
-    next[lpmodeWkupReasonDavisWind] = ((nowTimeSeconds / WIND_SAMPLING_RATE) + 1) * WIND_SAMPLING_RATE;
+  /* Schedule WIND */
+  if(equip.wind) {
+    next[lpmodeWkupReasonWind] = ((nowTimeSeconds / WIND_SAMPLING_RATE) + 1) * WIND_SAMPLING_RATE;
     // Safety feature: Only schedule new wind measurements until next package is due
-    if(next[lpmodeWkupReasonDavisWind] >= (next[lpmodeWkupReasonReport] - 1)) {
-      next[lpmodeWkupReasonDavisWind] = 0xffffffff;
+    if(next[lpmodeWkupReasonWind] >= (next[lpmodeWkupReasonReport] - 1)) {
+      next[lpmodeWkupReasonWind] = 0xffffffff;
     }
-    #if DEBUG_SERIAL
-    Serial1.print(F("Next DAVIS_WIND: "));
-    Serial1.println(next[lpmodeWkupReasonDavisWind], DEC);
-    #endif
-#endif
+    DEBUG_VAL(F("Next WIND"), next[lpmodeWkupReasonWind]);
+  }
 
   uint8_t closestAlarm = 0;
 
@@ -633,10 +728,8 @@ int lpmodeScheduleWakeup() {
 
   /* Register RTC event */
   rtcAlarmEvent = mp[closestAlarm];
-  //Serial1.print(F("lpmodeWkupReasonDavisWind="));
-  //Serial1.println(lpmodeWkupReasonDavisWind);
-  // Serial1.print(F("rtcAlarmEvent="));
-  // Serial1.println(rtcAlarmEvent);
+  // DEBUG(F("rtcAlarmEvent="));
+  // DEBUG(rtcAlarmEvent);
   
   // Get time delta until next alarm
   return (int)(next[closestAlarm] - nowTimeSeconds);
@@ -647,126 +740,39 @@ int lpmodeScheduleWakeup() {
  * as set before going to sleep on RTC wakeup (rtcAlarmEvent).
  */
 void lpmodeInterruptRTC() {
-  // Serial1.print(F("wkupReason="));
-  // Serial1.println(wkupReason);
+  // DEBUG(F("wkupReason="));
+  // DEBUG(wkupReason);
   wkupReason = rtcAlarmEvent;
-  // Serial1.print(F("wkupReason="));
-  // Serial1.println(wkupReason);
+  // DEBUG(F("wkupReason="));
+  // DEBUG(wkupReason);
 }
 
-/*  Wake up from Davis Rain Gauge tipping spoon interrupt event.
+/*  Wake up from  Rain Gauge tipping spoon interrupt event.
  *  Set global wakeup reason flag.
  */
-#if EQUIP_DAVIS_RAIN
-void lpmodeInterruptDavisRain() {
-  wkupReason = lpmodeWkupReasonDavisRain;
+void lpmodeInterruptRain() {
+  wkupReason = lpmodeWkupReasonRain;
 }
 
-void isrDavisRainCountNoLpmode() {
-  uint32_t nowTimeSeconds;
-  rtcGetTimeSeconds(&nowTimeSeconds);
-  #if DEBUG_SERIAL
-  Serial1.println(F("DAVIS_RAIN NO LPMODE"));
-  #endif
-  // Increment rain counter by one
-  uint16_t rainAccTmp = rainCountAccFlash.read();
-  if(davisRainCountIncrement(&rainCount, nowTimeSeconds)) {
-    // Increment accumulated value by one
-    rainCountAccFlash.write(rainAccTmp+1);
-  }
-  #if DEBUG_SERIAL
-    Serial1.print(F("    DAVIS_RAIN current: "));
-    Serial1.println(rainCount.current);
-    Serial1.print(F("DAVIS_RAIN accumulated: "));
-    Serial1.println(rainAccTmp+1);
-  #endif
+void lpmodeInterruptButton() {
+  wkupReason = lpmodeWkupReasonButton;
 }
-#endif
+
+void isrRainCountNoLpmode() {
+  uint32_t nowTimeSeconds;
+  rtc.getTimeSeconds(&nowTimeSeconds);
+  DEBUG(F("RAIN NO LPMODE"));
+  rain.increment(nowTimeSeconds);
+  DEBUG_VAL(F("    RAIN current: "), rain.getCounts());
+  DEBUG_VAL(F("RAIN accumulated: "), rain.getAccCounts());
+}
+
+void windIncrementSpdCount() {
+  windSpdCounter++;
+}
 
 /* Perform a reboot */
 void reboot() {
   NVIC_SystemReset();
   delay(100);
-}
-
-void setupBME280(BlueDot_BME280 *bme) {
-  //This program is set for the I2C mode
-  bme->parameter.communication = 0;                    //I2C communication for Sensor 1 (bme)
-  bme->parameter.I2CAddress = 0x76;                    //I2C Address for Sensor 1 (bme)
-  
-  //0b00:     In sleep mode no measurements are performed, but power consumption is at a minimum
-  //0b01:     In forced mode a single measured is performed and the device returns automatically to sleep mode
-  //0b11:     In normal mode the sensor measures continually (default value)
-  bme->parameter.sensorMode = 0b01;                    //Setup Sensor mode for Sensor 1
-                
-  //Great! Now set up the internal IIR Filter
-  //The IIR (Infinite Impulse Response) filter suppresses high frequency fluctuations
-  //In short, a high factor value means less noise, but measurements are also less responsive
-  //You can play with these values and check the results!
-  //In doubt just leave on default
-  
-  //0b000:      factor 0 (filter off)
-  //0b001:      factor 2
-  //0b010:      factor 4
-  //0b011:      factor 8
-  //0b100:      factor 16 (default value)
-  
-  bme->parameter.IIRfilter = 0b000;                   //IIR Filter for Sensor 1
-  
-  //Next you'll define the oversampling factor for the humidity measurements
-  //Again, higher values mean less noise, but slower responses
-  //If you don't want to measure humidity, set the oversampling to zero
-  
-  //0b000:      factor 0 (Disable humidity measurement)
-  //0b001:      factor 1
-  //0b010:      factor 2
-  //0b011:      factor 4
-  //0b100:      factor 8
-  //0b101:      factor 16 (default value)
-  
-  bme->parameter.humidOversampling = 0b001;            //Humidity Oversampling for Sensor 1
-  
-  //Now define the oversampling factor for the temperature measurements
-  //You know now, higher values lead to less noise but slower measurements
-  
-  //0b000:      factor 0 (Disable temperature measurement)
-  //0b001:      factor 1
-  //0b010:      factor 2
-  //0b011:      factor 4
-  //0b100:      factor 8
-  //0b101:      factor 16 (default value)
-  
-  bme->parameter.tempOversampling = 0b001;              //Temperature Oversampling for Sensor 1
-  
-  //Finally, define the oversampling factor for the pressure measurements
-  //For altitude measurements a higher factor provides more stable values
-  //On doubt, just leave it on default
-  
-  //0b000:      factor 0 (Disable pressure measurement)
-  //0b001:      factor 1
-  //0b010:      factor 2
-  //0b011:      factor 4
-  //0b100:      factor 8
-  //0b101:      factor 16 (default value)  
-  
-  bme->parameter.pressOversampling = 0b001;             //Pressure Oversampling for Sensor 1
-  
-  //For precise altitude measurements please put in the current pressure corrected for the sea level
-  //On doubt, just leave the standard pressure as default (1013.25 hPa);
-  
-  bme->parameter.pressureSeaLevel = 1013.25;            //default value of 1013.25 hPa (Sensor 1)
-  
-  //Also put in the current average temperature outside (yes, really outside!)
-  //For slightly less precise altitude measurements, just leave the standard temperature as default (15°C and 59°F);
-  
-  bme->parameter.tempOutsideCelsius = 15;               //default value of 15°C
-  bme->parameter.tempOutsideFahrenheit = 59;            //default value of 59°F
-
-  uint8_t bmeStatus = bme->init();
-  #if DEBUG_SERIAL
-  Serial1.println(F("Init BME280"));
-  if (bmeStatus != 0x60) {  // Check CHIP ID
-    Serial1.println(F("BME280 not found!"));
-  }
-  #endif
 }

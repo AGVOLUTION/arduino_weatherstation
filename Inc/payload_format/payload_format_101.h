@@ -23,40 +23,57 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* This source contains device-specific data (uuids, euis, encryption keys, ...) */
+/* This payload format is tailored for Sigfox communications.
+   Hence, we limit ourselves to a message size of 12 bytes. */
 
-#ifndef _commission_h_
-#define _commission_h_
-
-/**************************************************************
- * PCB Revision
- **************************************************************/
-#define PCB_REVISION_MAJOR	2
-#define PCB_REVISION_MINOR	0
-#define PCB_REVISION_PATCH	0
+#ifndef _PAYLOAD_FORMAT_101_H
+#define _PAYLOAD_FORMAT_101_H
 
 /**************************************************************
- * LPWAN Standard
- * 3: Sigfox
- * 4: NB-IoT
+ * CONVERSION INFORMATION
+ **************************************************************
+ *
  **************************************************************/
-#define LPWAN_STD_SIGFOX 3
-#define LPWAN_STD_NBIOT 4
-#define LPWAN_STANDARD LPWAN_STD_SIGFOX
 
 /**************************************************************
- * Transmission Interval between Data Packets (minutes)
- **************************************************************/
-#define PACKET_INTERVAL_INITIAL	60
-#define WIND_SAMPLING_RATE	180	// in seconds
+ * Payload specification
+ **************************************************************
+ * Byte		Parameter
+ * 0		VERSION								# number (0..255)
+ * 1		GPS Latitude WGS-84		MSB
+ * 2		GPS Latitude WGS-84		2
+ * 3		GPS Latitude WGS-84		1
+ * 4		GPS Latitude WGS-84		LSB
+ * 5		GPS Longitude WGS-84	MSB
+ * 6		GPS Longitude WGS-84	2
+ * 7		GPS Longitude WGS-84	1
+ * 8		GPS Longitude WGS-84	LSB
+ * 9		DS18B20 TEMP MSB		# Temperature (external) in 0.01 °C, signed, 2-complement
+ * 10		DS18B20 TEMP LSB
+ */
 
-/*****************************************************************
- * Debugging
- * ***************************************************************/
-/* For debug purpose */
-#define DEBUG_SERIAL            0 // printf debugging using Serial1 (RX/TX pins 13/14)
-#define DEBUG_NO_LPMODE         1 // use delay instead of low power mode -> routing and wakeup interrupts wont work
-#define DEBUG_SKIP_TX           0 // skip data packet transmission
-#define DEBUG_LED               0 // use debug led to display on / low power state
+// Payload frame format: Must not exceed 51 for LoRa (!)
+#define PAYLOAD_LENGTH_101 11
+#define PAYLOAD_VERSION_101 101
 
-#endif // _commission_h_
+enum PLD_FORMAT_101 {
+	PLD_VERSION_101	= 0,
+	PLD_LAT_101    = 1,
+	PLD_LONG_101   = 5,
+	PLD_DS18B20_101 = 9
+};
+
+// Error flags bit positions
+enum ERR_FLAGS_101 {
+};
+
+// Structure typedef
+/* Payload */
+typedef struct __attribute__ ((packed)) __payload_101_t {
+  uint8_t version = 101;
+  float latitude;
+  float longitude;
+  int16_t temperature;
+} payload_101_t;
+
+#endif // _payload_format_h
