@@ -23,18 +23,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef _RAINCOUNT_H
-#define _RAINCOUNT_H
+#include "sdlog.h"
 
-#include "Arduino.h"
+SDLog::SDLog(uint8_t cs) {
+  iniSuccessful = true;
 
-typedef struct __rainCount_t {
-  uint8_t current;
-  uint32_t lastCountOstime;
-} rainCount_t;
+  if (!SD.begin(cs)) { // can not access SD card
+    iniSuccessful = false;
+    return;
+  }
 
-void setupRainCount(rainCount_t *rainCount);
+  File headerfile = SD.open("header.txt", FILE_WRITE);
+  if (! headerfile) {
+    // debugln(F("Error opening SD headerfile."));
+    iniSuccessful = false;
+    return;
+  }
 
-bool davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds);
+  String headerString = "T,RH,P,RAIN/LATEST,RAIN/ACC,WIND/DIR,WIND/SPD/AVG,WIND/SPD/STD";
+  headerfile.println(headerString);
+  String unitString = "°C,%,hPa,COUNTS,COUNTS,°,km h-1,km h-1";
+  headerfile.println(unitString);
+  headerfile.close();
 
-#endif // _RAINCOUNT_H
+  datafile = SD.open("log.txt", FILE_WRITE);
+  if (! datafile) {
+    // debugln(F("Error opening SD logfile."));
+    iniSuccessful = false;
+    return;
+  }
+    // debugln(F("Completed SD setup."));
+}

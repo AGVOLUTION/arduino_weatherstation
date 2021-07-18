@@ -23,21 +23,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "rainCount.h"
-#include "Inc/commission/commission.h"
+#pragma once 
 
-void setupRainCount(rainCount_t *rainCount) {
-  rainCount->lastCountOstime = 0;
-  rainCount->current = 0;
-}
+#include "Arduino.h"
 
-/* Returns true if rain count has been counted */
-bool davisRainCountIncrement(rainCount_t *rainCount, uint32_t nowTimeSeconds) {  
-  // count only if there is at  least one second dead time
-  if(nowTimeSeconds > rainCount->lastCountOstime) {
-    rainCount->current++;
-    rainCount->lastCountOstime = nowTimeSeconds;
-    return true;
-  }
-  return false;
-}
+class Watermark {
+  public:
+    Watermark(uint8_t exc1Pin, uint8_t exc2Pin, uint8_t resPin, uint8_t supPin, uint8_t aPin, uint8_t bPin);
+    void activate();
+    void deactivate();
+    uint8_t matrixPotentialCbars(uint8_t channel);
+
+  private:
+    uint8_t exc1;
+    uint8_t exc2;
+    uint8_t res;
+    uint8_t sup;
+    uint8_t a;
+    uint8_t b;
+};

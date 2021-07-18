@@ -23,5 +23,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "bme280.h"
-#include "Inc/commission/commission.h"
+#include "rain.h"
+
+Rain::Rain(FlashStorageClass<uint16_t> *rainAccFlash, FlashStorageClass<uint16_t> *rainAccFlashSeal) {
+  accFlash = rainAccFlash;
+  accFlashSeal = rainAccFlashSeal;
+  lastCountOstime = 0;
+  current = 0;
+  // Check if Flash area which stores the rain accumulation is properly initialized
+  if(accFlashSeal->read() != 0xaffe) {
+    // Initialize -> set acc counter to zero and destroy seal
+    accFlash->write(0);
+    accFlashSeal->write(0xaffe);
+  }
+}
+
+/* Returns true if rain count has been counted */
+bool Rain::increment(uint32_t nowTimeSeconds) {
+  // count only if there is at  least one second dead time
+  if(nowTimeSeconds > lastCountOstime) {
+    current++;  // accumulate non-persistent counter
+    uint16_t rainAccTmp = accFlash->read();
+    accFlash->write(rainAccTmp+1);
+    lastCountOstime = nowTimeSeconds;
+    return true;
+  }
+  return false;
+}
+
+uint8_t Rain::getCounts() {
+  return current;
+}
+
+uint16_t Rain::getAccCounts() {
+  return accFlash->read();
+}
+
+void Rain::resetCounts() {
+
+}

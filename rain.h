@@ -23,9 +23,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef _BME280_H
-#define _BME280_H
+#pragma once 
 
-void setupBME280(BlueDot_BME280 *bme);
+#include "Arduino.h"
+#include <FlashStorage.h>     //
 
-#endif // _BME280_H
+/* Rain provides basically a dual counter with dead time:
+ * - persistent (accumulation)
+ * - non-persistent
+ * 
+ * It is accessed via
+ * - increment() -> Increment both counters by one
+ * - getCounts() -> non-persistent counter
+ * - getAccCounts() -> persistent counter
+ * - resetCounts() -> reset non-persistent counter
+ */
+
+class Rain {
+  public:
+    uint32_t lastCountOstime;
+    
+    Rain(FlashStorageClass<uint16_t> *rainAcccFlash, FlashStorageClass<uint16_t> *rainAccFlashSeal);
+    bool increment(uint32_t nowTimeSeconds);
+    uint8_t getCounts();
+    uint16_t getAccCounts();
+    void resetCounts();
+
+  private:
+    uint8_t current;
+    FlashStorageClass<uint16_t> *accFlash;
+    FlashStorageClass<uint16_t> *accFlashSeal;
+};

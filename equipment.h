@@ -23,24 +23,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef _DAVIS_WIND_H
-#define _DAVIS_WIND_H
+#pragma once
 
-#include "Arduino.h"
+class Equipment {
+  public:
+    bool bme76;
+    bool bme77;
+    bool weight1;
+    bool weight2;
+    bool watermark; // at least one Watermark tensiometer
+    bool gps;
+    bool leafWet;
+    bool wind;
+    bool rain;
+    bool climavi;
+    bool ds18b20;
 
-#define DAVIS_WIND_SPD_NUM  120
-typedef struct __davisWind_t {
-  float spdSamples[DAVIS_WIND_SPD_NUM];
-  uint16_t sample;
-  uint16_t counter;
-} davisWind_t;
+    Equipment();
 
-void davisWindAddSpdSample(davisWind_t *davisWind);
+    void mutuallyExclude();
 
-void davisWindIncrementSpdCnt();
-
-float davisWindSpdAvg(davisWind_t *davisWind);
-
-float davisWindSpdStd(davisWind_t *davisWind);
-
-#endif // _DAVIS_WIND_H
+    void print();
+}; // class Equipment
