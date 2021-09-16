@@ -49,12 +49,13 @@ SOFTWARE.
  **************************************************************/
 #define PACKET_INTERVAL_INITIAL	60
 #define WIND_SAMPLING_RATE	180	// in seconds
+#define GPS_FIXTURE_TIMEOUT 90 // in seconds
 
 /*****************************************************************
  * Debugging
  * ***************************************************************/
 /* For debug purpose */
-#define DEBUG_SERIAL            0 // printf debugging using Serial1 (RX/TX pins 13/14)
+#define DEBUG_SERIAL            1 // printf debugging using Serial1 (RX/TX pins 13/14)
 #define DEBUG_NO_LPMODE         1 // use delay instead of low power mode -> routing and wakeup interrupts wont work
 #define DEBUG_SKIP_TX           0 // skip data packet transmission
 #define DEBUG_LED               0 // use debug led to display on / low power state

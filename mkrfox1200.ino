@@ -3,7 +3,6 @@
  * 1. Leaf wetness detect module equipment
  * 2. Record BME76 error flag
  * 3. If BME76 looses initialization (power cut) -> Detect and Re-Init ? Which registers need to be written?
- * 4. Search for DS18B20 on bus instead of specifying address manually
  * 
  * Energy Consumption
  * 1. Serial1 usage makes approx. 50uA in Stop Mode
@@ -23,13 +22,13 @@
  * 
  * Final 3V3 current BME76, Wind, Rain, No SD): 64uA. With SD Card: 130uA -> Half-life!
  * 
- * Energy Consumption Measurement Protocol 17.7.2021. Measured mA at VBAT (Li-Ion 3.8V!). Equipped with: GPS, DS18B20, BME280 0x76, BME 0x77, 1x Watermark + Multiplexer
- * 1. GPS Looking For Fix 50mA
- * 2. Stop Mode All mentioned sensors equipped: 
- * 3. TX Sigfox: 60mA
+ * Energy Consumption Measurement Protocol 17.7.2021. Measured mA at +3V3. Equipped with: GPS, DS18B20, BME280 0x76, BME 0x77, 1x Watermark + Multiplexer, DEBUG_SERIAL = 0 or 1 ( does not make a difference! )
+ * 1. GPS Looking For Fix 50mA @ 90s = 4500mAs
+ * 2. Stop Mode All mentioned sensors equipped: 190uA = 100uA (uC listening for interrupts + RTC) + 90uA (peripherals)
+ * 3. TX Sigfox: 60mA (approx. 10s per data packet) = 600mAs per packet
  * 4. 
- * 5. 
- * 6. 
+ * 5. Charge per day (24 packets, 1x position): 24 * 2 * 600mAs (Sigofx) + 4500mAs (GPS) + 600mAs (Sigfox Position) + 16300mAs (Stop Mode) = 28800 Sigfox + 5100 Position + 16300 (Stop) = 46mWh
+ * 6. Charge LiIon: 3.8V * 2200mAh = 8360mWh ---> 182 days = half a year
  * 7. 
  * 8. 
  */
@@ -97,7 +96,7 @@ lpmodeWkupReason_t rtcAlarmEvent = lpmodeWkupReasonReport;
 // Last transmit time
 static uint32_t ostimeLastPacketTx = 0;
 // Packet counter between location packets
-static uint32_t pcktsSinceLastLoc = 25;
+static uint32_t pcktsSinceLastLoc = 50; // init with large value to transmit position after reset
 
 Wind wind(WIND_SPD_Pin, WIND_SUP_Pin, WIND_DIR_Pin); // Wind sensor handle
 static uint16_t windSpdCounter; // Global speed counter for wind speed measurement
@@ -344,7 +343,7 @@ void report() {
   // Checking whether we are supposed to transmit a location package
   // Send packet once a day
   txPld.p101 = 0; // let's assume not to transmit GPS data, because at least something will go wrong (GPS Fixture, Module comms, etc.). Set txPld.p101 = 1 only if position data is available.
-  if(equip.gps && ((PACKET_INTERVAL_INITIAL * pcktsSinceLastLoc) > 24*60)) {
+  if(equip.gps && ((PACKET_INTERVAL_INITIAL * pcktsSinceLastLoc) > 48*60)) { // every two days position packet
     pcktsSinceLastLoc = 0;
     uint32_t tBeg, tNow;
     rtc.getTimeSeconds(&tBeg);
@@ -360,7 +359,7 @@ void report() {
     uint8_t hh, mm, ss; // UTC time via GPS module
     String latOrient, lonOrient, latStr, lonStr;
     DEBUG(F("Waiting for GPS Fixture."));
-    while((tNow - tBeg) < 90) { // wait 90s for a fixture
+    while((tNow - tBeg) < GPS_FIXTURE_TIMEOUT) { // wait 90s for a fixture
       rtc.getTimeSeconds(&tNow);
       line = Serial1.readStringUntil('\n'); // read a single line
       /* The NMEA Global Positioning System Fix Data (GGA) format:
