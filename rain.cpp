@@ -60,5 +60,5 @@ uint16_t Rain::getAccCounts() {
 }
 
 void Rain::resetCounts() {
-
+  current = 0;
 }
