@@ -60,6 +60,8 @@ void Watermark::deactivate() {
   digitalWrite(sup, LOW);
   digitalWrite(exc1, LOW); // shorten signals for safety
   digitalWrite(exc2, LOW);
+  digitalWrite(a, LOW); // prevent leakage currents through switch select A/B
+  digitalWrite(b, LOW);
   PORT->Group[g_APinDescription[sup].ulPort].PINCFG[g_APinDescription[sup].ulPin].reg &= ~(0x40) ; // reset output drive current on sup -> select normal drive strength
 }
 
