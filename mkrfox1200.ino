@@ -114,7 +114,7 @@ RtcUser rtc;
 
 void setup() {
   // Setup UART
-  DEBUG_INIT(9600);
+  DEBUG_INIT(38400);
   DEBUG(F("*************************************************"));
   DEBUG(F("*A G V O L U T I O N    M I C R O C L I M A T E *"));
   DEBUG(F("*************************************************"));
@@ -343,7 +343,7 @@ void report() {
   // Checking whether we are supposed to transmit a location package
   // Send packet once a day
   txPld.p101 = 0; // let's assume not to transmit GPS data, because at least something will go wrong (GPS Fixture, Module comms, etc.). Set txPld.p101 = 1 only if position data is available.
-  if(equip.gps && ((PACKET_INTERVAL_INITIAL * pcktsSinceLastLoc) > 48*60)) { // every two days position packet
+  if(equip.gps && ((PACKET_INTERVAL_INITIAL * pcktsSinceLastLoc) > 72*60)) { // every three days position packet
     pcktsSinceLastLoc = 0;
     uint32_t tBeg, tNow;
     rtc.getTimeSeconds(&tBeg);
