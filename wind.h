@@ -35,12 +35,12 @@ class Wind {
     uint16_t sample;
     float spdSamples[WIND_SPD_NUM];
 
-    Wind(uint8_t spdPin, uint8_t supPin, uint8_t dirPin) {
+    Wind(uint8_t spdP, uint8_t supP, uint8_t dirP) {
       sample = 0;
       spdCounter = 0;
-      spdPin = spdPin;
-      supPin = supPin;
-      dirPin = dirPin;
+      spdPin = spdP;
+      supPin = supP;
+      dirPin = dirP;
     }
 
     bool init();            // Initializes GPIOs
@@ -56,5 +56,3 @@ class Wind {
     uint8_t dirPin;
     bool isInit;  // dedicated "Class initialized" flag
 };
-
-
