@@ -27,25 +27,24 @@ SOFTWARE.
 #define _HARDWARE_H
 
 /* Specify hardware layout */
-#define RAIN_Pin          		0
 #define DS18B20_Pin             7
+
 #define WM_EXC2_Pin             5
-#define WM_EXC1_Pin             2
-#define WIND_SPD_Pin      		1
-#define WM_B_Pin                1
-#define WM_A_Pin                A5
-#define WM_RESISTANCE_Pin       A6
-#define WM_SWITCH_SUP           A4
-#define WIND_DIR_Pin      		A5
-#define WIND_SUP_Pin      		A4
-#define AGV_MOISTURE_EN_Pin     A3
-#define GPS_SUP_Pin             A2
-#define LEAFWET_SIG_Pin         A1
-#define LEAFWET_SUP_Pin         A0
-#define WEIGHT_1_Pin			A3
-#define WEIGHT_2_Pin			A6
-#define WEIGHT_EN_Pin			2
-#define BUTTON_Pin				3
 #define SDLOG_CS_Pin            4
+#define GPS_SUP_Pin             3
+#define WM_EXC1_Pin             2
+#define WEIGHT_EN_Pin			2
+#define WM_B_Pin                1
+#define RAIN_DAVIS_Pin     		0
+#define WM_RESISTANCE_Pin       (PIN_A6)
+#define WEIGHT_2_Pin			(PIN_A6)
+#define WM_A_Pin                (PIN_A5)
+#define WM_SWITCH_SUP           (PIN_A4)
+#define AGV_MOISTURE_EN_Pin     (PIN_A3)
+#define WIND_SUP_Pin      		(PIN_A3)
+#define WEIGHT_1_Pin			(PIN_A3)
+#define WIND_SPD_Pin      		(PIN_A2)
+#define RAIN_PRONAMIC_Pin  		(PIN_A1)
+#define WIND_DIR_Pin      		(PIN_A0)
 
 #endif // _HARDWARE_H

@@ -32,8 +32,8 @@ SOFTWARE.
  * PCB Revision
  **************************************************************/
 #define PCB_REVISION_MAJOR	2
-#define PCB_REVISION_MINOR	0
-#define PCB_REVISION_PATCH	0
+#define PCB_REVISION_MINOR	2
+#define PCB_REVISION_PATCH	2
 
 /**************************************************************
  * LPWAN Standard
@@ -47,9 +47,10 @@ SOFTWARE.
 /**************************************************************
  * Transmission Interval between Data Packets (minutes)
  **************************************************************/
-#define PACKET_INTERVAL_INITIAL	60
-#define WIND_SAMPLING_RATE	180	// in seconds
-#define GPS_FIXTURE_TIMEOUT 90 // in seconds
+#define PACKET_INTERVAL_SECONDS	3600 // in seconds
+#define WIND_SAMPLING_INTERVAL_SECONDS	900	// in seconds (every 15 min good energy compromise)
+#define GPS_FIXTURE_TIMEOUT_SECONDS 85 // in seconds
+#define GPS_LOCATION_PACKET_INTERVAL_HOURS 168 // once a week
 
 /*****************************************************************
  * Debugging
