@@ -26,31 +26,57 @@ SOFTWARE.
 #include "sdlog.h"
 
 SDLog::SDLog(uint8_t cs) {
-  iniSuccessful = true;
+  csPin = cs;
+  iniSuccessful = false;
+}
 
-  if (!SD.begin(cs)) { // can not access SD card
+bool SDLog::begin(String header, String units)
+{
+  if (iniSuccessful) // already initialized
+  {
+    return true;
+  }
+  
+  iniSuccessful = true;
+  DEBUG("Accessing SD Card");
+  if (!SD.begin(csPin)) { // can not access SD card
+    DEBUG("No access to SD Card");
     iniSuccessful = false;
-    return;
+    return false;
   }
 
   File headerfile = SD.open("header.txt", FILE_WRITE);
   if (! headerfile) {
-    // debugln(F("Error opening SD headerfile."));
+    DEBUG("Cant open headerfile");
     iniSuccessful = false;
-    return;
+    return false;
   }
 
-  String headerString = "T,RH,P,RAIN/LATEST,RAIN/ACC,WIND/DIR,WIND/SPD/AVG,WIND/SPD/STD";
-  headerfile.println(headerString);
-  String unitString = "°C,%,hPa,COUNTS,COUNTS,°,km h-1,km h-1";
-  headerfile.println(unitString);
+  headerfile.println(header);
+  headerfile.println(units);
   headerfile.close();
 
   datafile = SD.open("log.txt", FILE_WRITE);
   if (! datafile) {
-    // debugln(F("Error opening SD logfile."));
+    DEBUG("Cant open datafile");
     iniSuccessful = false;
-    return;
+    return false;
   }
-    // debugln(F("Completed SD setup."));
+  else
+  {
+    datafile.close();
+  }
+  return true;
+}
+
+bool SDLog::write(String str)
+{
+  if(!iniSuccessful) // SD card not initialized yet
+  {
+    return false;
+  }
+
+  datafile = SD.open("log.txt", FILE_WRITE);
+  datafile.println(str);
+  datafile.close(); // ensures that data is physically written to file
 }

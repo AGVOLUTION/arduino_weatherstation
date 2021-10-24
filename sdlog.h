@@ -26,6 +26,7 @@ SOFTWARE.
 #pragma once
 
 #include <SD.h>
+#include "debug.h"
 
 class SDLog {
   public:
@@ -33,4 +34,9 @@ class SDLog {
     bool iniSuccessful;
 
     SDLog(uint8_t cs);
+    bool begin(String header, String units);
+    bool write(String str);
+
+  private:
+    uint8_t csPin;
 };
