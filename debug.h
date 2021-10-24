@@ -29,10 +29,11 @@ SOFTWARE.
 #include "Inc/commission/commission.h"
 
 #if DEBUG_SERIAL
-#define DEBUG_INIT(speed)	Serial1.begin(speed)
-#define DEBUG(txt)			Serial1.println(txt)
-#define DEBUG_VAL(txt, val)	Serial1.print(txt); Serial1.print(": "); Serial1.println(val)
-#define DEBUG_VAL_ARG(txt, val, prec)  Serial1.print(txt); Serial1.print(": "); Serial1.println(val, prec)
+#define DEBUG_SERIAL_IF Serial1
+#define DEBUG_INIT(speed)	DEBUG_SERIAL_IF.begin(speed)
+#define DEBUG(txt)			DEBUG_SERIAL_IF.println(txt)
+#define DEBUG_VAL(txt, val)	DEBUG_SERIAL_IF.print(txt); DEBUG_SERIAL_IF.print(": "); DEBUG_SERIAL_IF.println(val)
+#define DEBUG_VAL_ARG(txt, val, prec)  DEBUG_SERIAL_IF.print(txt); DEBUG_SERIAL_IF.print(": "); DEBUG_SERIAL_IF.println(val, prec)
 #else
 #define DEBUG_INIT(speed)
 #define DEBUG(txt)
