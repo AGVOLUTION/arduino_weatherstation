@@ -27,17 +27,20 @@ SOFTWARE.
 
 class Equipment {
   public:
+    bool ds18b20;
+    bool rainDavis;
+    bool rainPronamic;
+    bool sht30_44;
+    bool sht30_45;
     bool bme76;
     bool bme77;
+    bool watermark; // at least one Watermark tensiometer
+    bool wind;
     bool weight1;
     bool weight2;
-    bool watermark; // at least one Watermark tensiometer
     bool gps;
-    bool leafWet;
-    bool wind;
-    bool rain;
+    bool sd;
     bool climavi;
-    bool ds18b20;
 
     Equipment();
 

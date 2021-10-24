@@ -27,56 +27,57 @@ SOFTWARE.
 #include "debug.h"
 
 Equipment::Equipment() {
-	  bme76     = false;
-    bme77     = false;
-    weight1   = false;
-    weight2   = false;
-    watermark = false; // at least one Watermark tensiometer
-    gps       = false;
-    leafWet   = false;
-    wind      = false;
-    rain      = false;
-    climavi   = false;
-    ds18b20   = false;
+    ds18b20      = false;
+    rainDavis    = false;
+    rainPronamic = false;
+    sht30_44     = false;
+    sht30_45     = false;
+	  bme76        = false;
+    bme77        = false;
+    watermark    = false; // at least one Watermark tensiometer
+    wind         = false;
+    weight1      = false;
+    weight2      = false;
+    gps          = false;
+    sd           = false;
+    climavi      = false;
 }
 
 void Equipment::mutuallyExclude() {
 	// Mutual equipment exclusion
-	// 1. GPS <-> LEAF_WET -> GPS overrides Leaf wetness
-	if(gps) {
-		leafWet = 0;
+
+  // 1. Weight 1 overrides Wind, since shared pin WIND_SUP (output) + WEIGHT_1 (input) wants to remain in input state not to destroy the hardware
+  if(weight1) {
+    wind = 0;
+  }
+
+	// 2. Weight 1 overrides Climavi, since shared pin MOISTURE_EN (output) + WEIGHT_1 (input) wants to remain in input state not to destroy the hardware
+	if(weight1) {
+		climavi = 0;
 	}
 
-	// 2. Climavi overrides Weight 1
-	if(climavi) {
-		weight1 = 0;
-	}
-
-	// 3. Watermark overrides Wind
-	if(watermark) {
-		wind = 0;
-	}
-
-	// 4. Watermark overrides Weight 1+2
-	if(watermark) {
-		weight1 = 0;
-		weight2 = 0;
+	// 3. Weight 1+2 overrides Watermark
+	if(weight1 || weight2) {
+		watermark = 0;
 	}
 }
 
 // Print the whole equipment list on Serial1
 void Equipment::print() {
   DEBUG("Equipment list:");
-  DEBUG_VAL("    BME76", bme76);
-  DEBUG_VAL("    BME77", bme77);
-  DEBUG_VAL("  WEIGHT1", weight1);
-  DEBUG_VAL("  WEIGHT2", weight2);
-  DEBUG_VAL("WATERMARK", watermark);
-  DEBUG_VAL("      GPS", gps);
-  DEBUG_VAL("  LEAFWET", leafWet);
-  DEBUG_VAL("     WIND", wind);
-  DEBUG_VAL("     RAIN", rain);
-  DEBUG_VAL("  CLIMAVI", climavi);
-  DEBUG_VAL("  DS18B20", ds18b20);
+  DEBUG_VAL("      DS18B20", ds18b20);
+  DEBUG_VAL("   RAIN DAVIS", rainDavis);
+  DEBUG_VAL("RAIN PRONAMIC", rainPronamic);
+  DEBUG_VAL("   SHT30 0x44", sht30_44);
+  DEBUG_VAL("   SHT30 0x45", sht30_45);
+  DEBUG_VAL("        BME76", bme76);
+  DEBUG_VAL("        BME77", bme77);
+  DEBUG_VAL("    WATERMARK", watermark);
+  DEBUG_VAL("         WIND", wind);
+  DEBUG_VAL("      WEIGHT1", weight1);
+  DEBUG_VAL("      WEIGHT2", weight2);
+  DEBUG_VAL("          GPS", gps);
+  DEBUG_VAL("           SD", sd);
+  DEBUG_VAL("      CLIMAVI", climavi);
   DEBUG();
 }
