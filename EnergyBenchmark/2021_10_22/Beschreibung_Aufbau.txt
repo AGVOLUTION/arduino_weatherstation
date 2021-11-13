@@ -1,0 +1,26 @@
+- GNSS Antenne an GNSS Modul
+- Keine 868 MHz Antenne für SigFox
+
+Experimente
+a. 
+b. Starte ULPBench (Laufzeit 10s). Resette Controller manuell sofort nach Start. Notiere Gesamtenergieverbrauch.
+
+Szenarien
+1.1 mkrfox1200 ohne Wetterstationsboard und ohne jegliche Peripherie, DEBUG_SERIAL FLAG = 0
+1.2 mkrfox1200 ohne Wetterstationsboard und ohne jegliche Peripherie, DEBUG_SERIAL FLAG = 1
+1.3 mkrfox1200  mit USB-Seriell-Wandler an 14 TX					, DEBUG_SERIAL FLAG = 1
+2. mkrfox1200 auf Wetterstationsboard, nur Watermarks angeschlossen (ein Pseudo-Widerstand 6.8kOhm
+3. Watermarks + DS18B20
+4. Watermarks + Rain Event
+5. Watermarks + SHT30 0x44
+6. Watermarks + BME280 0x76
+7. Watermarks + BME280 0x77
+8. Watermarks + GNSS Modul
+9. Watermarks + SD Kartenshield
+10. Watermarks + SD Kartenshield + SD Karte
+
+In den Experimenten 1.1 bis 10: SKIP_TX = 1 --> keine SigFox Transmission --> Payload-Sendeverbrauch wird separat bestimmt
+In den Experimenten 2. bis 10.: DEBUG_SERIAL = 1, jedoch kein USB-Seriell-Wandler verbunden
+
+Soll der DEBUG UART immer anbleiben? Oder zumindest auf einer höheren Baudrate?
+zB TX 480 Zeichen / 9600 = 50ms * 2mA = 0.1mAs
