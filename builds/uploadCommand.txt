@@ -1,0 +1,1 @@
+C:\Users\kamml\Documents\ArduinoData\packages\arduino\tools\bossac\1.7.0-arduino3/bossac.exe -i -d --port=COM10 -U true -i -e -w -v C:\Users\kamml\AppData\Local\Temp\arduino_build_61513/mkrfox1200.ino.bin -R
