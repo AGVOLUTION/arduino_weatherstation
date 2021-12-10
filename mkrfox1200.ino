@@ -144,7 +144,7 @@ void setup() {
   DEBUG("PAC = " + PAC);
 
   SigFox.end(); //Send module to standby until we need to send a message
-
+  
   // Check Equipment
   // 1. Assume Wind by default (there is no check)
   equip.wind = 1;
@@ -193,9 +193,11 @@ void setup() {
   analogReadResolution(12);
   delay(20); // wait until voltage level stabilization
   int wmEquipTestValHigh = analogRead(WM_RESISTANCE_Pin);
+  DEBUG_VAL("val High", wmEquipTestValHigh);
   digitalWrite(WM_EXC1_Pin, LOW);
   delay(20); // wait until voltage level stabilization
   int wmEquipTestValLow = analogRead(WM_RESISTANCE_Pin);
+  DEBUG_VAL("val Low", wmEquipTestValLow);
   if((wmEquipTestValHigh > 3950) && (wmEquipTestValLow < 150)) { // require high and low levels
     equip.watermark = 1;
   }
@@ -444,12 +446,16 @@ void report() {
       line = Serial1.readStringUntil('\n'); // read a single line
       /* The NMEA Global Positioning System Fix Data (GGA) format:
        * $GPGGA,HHMMSS.ss,BBBB.BBBB,b,LLLLL.LLLL,l,Q,NN,D.D,H.H,h,G.G,g,A.A,RRRR*PP or
-       * $GPRMC,HHMMSS,A,BBBB.BBBB,b,LLLLL.LLLL,l,GG.G,RR.R,DDMMYY,M.M,m,F*PP
+       * $GPRMC,HHMMSS,A,BBBB.BBBB,b,LLLLL.LLLL,l,GG.G,RR.R,DDMMYY,M.M,m,F*PP           --> used on our u.blox module
+       * $GNRMC,HHMMSS.000,A,BBBB.BBBBB,N,LLLLL.LLLLL,E,G.GG,R.RR,DDMMYY,,,A,V*05       --> used on our SIM28 module
+       * $GNRMC,225445.000,A,4934.44872,N,01059.09229,E,0.00,0.00,051221,,,A,V*05       --> used on our SIM28 module
        * -> Use substrings due to fixed-width string format
        */
 
-      // Search for $GPRMC command
-      if(!line.substring(0, 6).equals("$GPRMC")) continue; // skip
+      // Search for $GPRMC and $GNRMC command
+      bool indicateGPRMC = line.substring(0, 6).equals("$GPRMC");
+      bool indicateGNRMC = line.substring(0, 6).equals("$GNRMC");
+      if((!indicateGPRMC) && (!indicateGNRMC) ) continue; // skip
       if(!line.substring(18, 19).equals("A")) continue; // character at pos. 18 has to be A=OK (V=WARNING). Otherwise -> no position fix
       DEBUG(line); // forward line to Debug console
 
@@ -462,13 +468,28 @@ void report() {
       #endif
       
       // Extract position information
-      latStr = line.substring(20,29);
-      latOrient = line.substring(30, 31);
+      if(indicateGPRMC) // used on u.blox module
+      {
+        latStr = line.substring(20,29);
+        latOrient = line.substring(30, 31);
+      }
+      else // SIM28 module
+      {
+        latStr = line.substring(20,30);
+        latOrient = line.substring(31, 32);
+      }
       /* Convert the latitude ddmm.mmmm format to decimal degrees. 60 angular minutes = 1 degree */
       lat = latStr.substring(0,2).toFloat() + latStr.substring(2).toFloat() / 60.0f;
-
-      lonStr = line.substring(32, 42);
-      lonOrient = line.substring(43, 44);
+      if(indicateGPRMC) // used on u.blox module
+      {
+        lonStr = line.substring(32, 42);
+        lonOrient = line.substring(43, 44);
+      }
+      else // SIM28 module
+      {
+        lonStr = line.substring(33, 44);
+        lonOrient = line.substring(45, 46);
+      }
       /* Convert the longitude dddmm.mmmm format to decimal degrees. 60 angular minutes = 1 degree */
       lon = lonStr.substring(0,3).toFloat() + lonStr.substring(3).toFloat() / 60.0f;
 
