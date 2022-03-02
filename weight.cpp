@@ -31,7 +31,7 @@ Weight::Weight(uint8_t sup, uint8_t sig1, uint8_t sig2) {
   sigPins[1] = sig2;
 
   for(int ch=0; ch<2; ch++) {
-    amplifierGain[ch] = 538.33f;
+    amplifierGain[ch] = 538.33f; // 5 + 80kOhm / RG = 5 + 80 kOhm / 150 Ohm = 538.33
     Cn[ch] = 2.0f; // in mV/V (Kennwert)
     nominalLoad[ch] = 50.0f; // in kg (Nennlast)
     taraGrams[ch] = 0.0f; // tara load = 0 grams
@@ -55,7 +55,7 @@ void Weight::disable() {
 void Weight::tara() {
   enable();
   for(uint8_t ch = 0; ch < 2; ch++) {
-    taraGrams[ch] = getGrams(ch) + taraGrams[ch]; // getGrams adds the previous taraGrams weight
+    taraGrams[ch] = getGrams(ch) + taraGrams[ch]; // getGrams subtracts the previous taraGrams weight
   }
   disable();
 }
