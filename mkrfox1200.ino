@@ -736,21 +736,19 @@ void report() {
   }
 
   // Print raw hex payload message
-  #if FALSE
-  Serial.println("Payload 100");
-  for(uint8_t i = 0; i < 12; i++) {
-    Serial.print(*((uint8_t*)&payload+i), HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-
-  Serial.println("Payload 104");
-  for(uint8_t i = 0; i < 12; i++) {
-    Serial.print(*((uint8_t*)&payload+i), HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-  #endif
+//  Serial.println("Payload 100");
+//  for(uint8_t i = 0; i < 12; i++) {
+//    Serial.print(*((uint8_t*)&payload+i), HEX);
+//    Serial.print(F(" "));
+//  }
+//  Serial.println();
+//
+//  Serial.println("Payload 104");
+//  for(uint8_t i = 0; i < 12; i++) {
+//    Serial.print(*((uint8_t*)&payload+i), HEX);
+//    Serial.print(F(" "));
+//  }
+//  Serial.println();
 
   // Clears all pending interrupts
   SigFox.status();
