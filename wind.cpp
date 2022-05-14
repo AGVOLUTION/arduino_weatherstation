@@ -70,7 +70,13 @@ float Wind::spdStd() {
     diff = spdSamples[i] - avg;
     sum += diff * diff;
   }
-  return sqrt(sum / sample);
+  // A bias-free variance estimator is normalized by n-1 -> only if sample >= 2 to avoid division by zero!
+  uint16_t n = 1;
+  if(sample > 2)
+  {
+    n = sample - 1;
+  }
+  return sqrt(sum / n);
 }
 
 float Wind::direction() {
