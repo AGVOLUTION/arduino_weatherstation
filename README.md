@@ -47,3 +47,7 @@ At the moment, we support:
 3. Build + Flash.
 4. Done!
 
+## ToDo
+* If BME76 and BME77 looses initialization (power cut) -> Detect and Re-Init ? Which registers need to be written?
+* Integration of LoRa, mioty, Nb-IoT boards
+
