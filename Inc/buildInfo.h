@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Agvolution GmbH
+Copyright (c) 2022 Agvolution GmbH
 Head Development: Lukas Kamm / l.kamm@agvolution.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,36 +23,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#pragma once
+#ifndef _BUILDINFO_H
+#define _BUILDINFO_H
 
-#include "Arduino.h"
+#define BUILDINFO_IDENTIFIER 0xcafecafe
 
-// Maximum number of samples during one packet cycle
-#define WIND_SPD_NUM  120
+typedef struct __attribute__((packed)) __buildInfo_t  {
+	uint32_t	identifier;		// Identifier. Used to locate buildInfo in binary
+	const char	*naming;		// Name of this build
+	const char	*vendor;		// Vendor of this build
+	uint8_t		v_major;		// Major version
+	uint8_t		v_minor;		// Minor version
+	uint8_t		v_patch;		// Patch version
+	const char	*buildDate;		// Build date in __DATE__ Format (mmm dd yyyy)
+	const char	*buildTime;		// Build time in __TIME__ Format (hh:mm:ss)
+} buildInfo_t;
 
-class Wind {
-  public:
-    uint16_t sample;
-    float spdSamples[WIND_SPD_NUM];
-
-    Wind(uint8_t spdP, uint8_t supP, uint8_t dirP) {
-      sample = 0;
-      spdCounter = 0;
-      spdPin = spdP;
-      supPin = supP;
-      dirPin = dirP;
-    }
-
-    bool init();            // Initializes GPIOs
-    void addSpdSample(float val); // Add a speed measurement
-    float spdAvg();         // Average of all speed samples in km/h
-    float spdStd();         // Std. Deviation of all speed samples in km/h
-    float direction();      // Wind direction in °
-
-  private:
-    uint16_t spdCounter;
-    uint8_t spdPin;
-    uint8_t supPin;
-    uint8_t dirPin;
-    bool isInit;  // dedicated "Class initialized" flag
-};
+#endif // _BUILDINFO_H

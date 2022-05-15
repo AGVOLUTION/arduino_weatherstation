@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Agvolution
+Copyright (c) 2021 Agvolution GmbH
 Head Development: Lukas Kamm / l.kamm@agvolution.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

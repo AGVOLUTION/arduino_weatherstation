@@ -1,41 +1,45 @@
-/*************
- * TODO
- * 1. If BME76 and BME77 looses initialization (power cut) -> Detect and Re-Init ? Which registers need to be written?
- * 
- * Energy Consumption
- * 1. Serial1 usage makes approx. 50uA in Stop Mode
- * 2. 19uA in Stop Mode without any shields
- * 3. 19uA in Stop Mode + SD Proto Shield without SD Card
- * 4. 740uA in Stop Mode when SD Card is suddenly inserted or not properly initialized
- * 5. 93uA in Stop Mode + SD Proto Shield + SD Card properly initialized (SPI + SD Controller shutdown current ca. 74uA (it is not the SD shutdown current!)) ==> SD library costs 70uA in Stop Mode
- * 6. Wire.h library + Wire.begin (I2C master) -> no additional shutdown current (no slaves plugged)
- * 7. RTCZero approx 2uA in Stop Mode
- * 8. SigFox 16mA in active mode, additional 20uA in Stop Mode (SigFox.end())
- * 9. Input pullups do not really make a difference
- * 10. External Serial1 makes around 70-100uA in Stop Mode and can't simply be 'ended' by Serial.end() (-> requires additional register modifications to restore lowest stop current)
- * 11. USB Serial is not drawing any stop mode current!
- * 12. Include Rain module: +15-20uA (probably the pull-up resistor)
- * 13. Include wind module: No additional cost during stop mode, but speed sample cycles more frequently than packet cycle
- * 14. BME280 not initialized or initialized (shutdown): 10uA
- * 
- * Final 3V3 current BME76, Wind, Rain, No SD): 64uA. With SD Card: 130uA -> Half-life!
- * 
- * Energy Consumption Measurement Protocol 17.7.2021. Measured mA at +3V3. Equipped with: GPS, DS18B20, BME280 0x76, BME 0x77, 1x Watermark + Multiplexer, DEBUG_SERIAL = 0 or 1 ( does not make a difference! )
- * 1. GPS Looking For Fix 50mA @ 90s = 4500mAs
- * 2. Stop Mode All mentioned sensors equipped: 190uA = 100uA (uC listening for interrupts + RTC) + 90uA (peripherals)
- * 3. TX Sigfox: 60mA (approx. 10s per data packet) = 600mAs per packet
- * 4. 
- * 5. Charge per day (24 packets, 1x position): 24 * 2 * 600mAs (Sigofx) + 4500mAs (GPS) + 600mAs (Sigfox Position) + 16300mAs (Stop Mode) = 28800 Sigfox + 5100 Position + 16300 (Stop) = 46mWh
- * 6. Charge LiIon: 3.8V * 2200mAh = 8360mWh ---> 182 days = half a year
- * 7. 
- * 8. 
- */
+/*
+MIT License
 
+Copyright (c) 2022 Agvolution GmbH
+Head Development: Lukas Kamm / l.kamm@agvolution.com
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE. 
+*/
 
 /* Pin definitions and equipment */
 #include "Inc/hardware.h"     // Contains Pinout
 #include "equipment.h"        // Stores the modules equipped
 #include "Inc/commission/commission.h"  // Configuration of packet interval, ...
+#include "Inc/buildInfo.h"
+
+/* Build info segment */
+buildInfo_t const buildInfo __attribute__((used)) = {
+    .identifier = BUILDINFO_IDENTIFIER,
+    .naming     = "MKR Weatherstation",
+    .vendor     = "Agvolution GmbH",
+    .v_major    = 2,
+    .v_minor    = 1,
+    .v_patch    = 2,
+    .buildDate  = __DATE__,
+    .buildTime  = __TIME__
+};
 
 /* Payload definition */
 #include "Inc/payload_format/payload_format_101.h"
