@@ -33,13 +33,20 @@ SOFTWARE.
  **************************************************************/
 #define PCB_REVISION_MAJOR	2
 #define PCB_REVISION_MINOR	2
-#define PCB_REVISION_PATCH	2
+#define PCB_REVISION_PATCH	1
 
 /**************************************************************
  * LPWAN Standard
+ * 1: LoRa
+ * 2: mioty
  * 3: Sigfox
  * 4: NB-IoT
+ * 
+ * Note: Only Sigfox MKRFox1200 boards supported so far.
+ * LoRa / mioty / Nb-IoT require board integration.
  **************************************************************/
+#define LPWAN_STD_LORA 1
+#define LPWAN_STD_MIOTY 2
 #define LPWAN_STD_SIGFOX 3
 #define LPWAN_STD_NBIOT 4
 #define LPWAN_STANDARD LPWAN_STD_SIGFOX
@@ -48,7 +55,7 @@ SOFTWARE.
  * Transmission Interval between Data Packets (minutes)
  **************************************************************/
 #define PACKET_INTERVAL_SECONDS	3600 // in seconds
-#define WIND_SAMPLING_INTERVAL_SECONDS	900	// in seconds (every 15 min good energy compromise)
+#define WIND_SAMPLING_INTERVAL_SECONDS	900	// in seconds (every 15 min is a good energy compromise for battery stand-alone stations)
 #define GPS_FIXTURE_TIMEOUT_SECONDS 85 // in seconds
 #define GPS_LOCATION_PACKET_INTERVAL_HOURS 168 // once a week
 
@@ -57,8 +64,8 @@ SOFTWARE.
  * ***************************************************************/
 /* For debug purpose */
 #define DEBUG_SERIAL            0 // printf debugging using Serial1 (RX/TX pins 13/14)
-#define DEBUG_NO_LPMODE         0 // use delay instead of low power mode -> routing and wakeup interrupts wont work
-#define DEBUG_SKIP_TX           0 // skip data packet transmission
-#define DEBUG_LED               0 // use debug led to display on / low power state
+#define DEBUG_NO_LPMODE         0 // Use delay instead of low power mode -> Wake-up routing and wake-up interrupts won't work
+#define DEBUG_SKIP_TX           0 // Skip data packet transmission
+#define DEBUG_LED               0 // Use debug LED to display on / low power state
 
 #endif // _commission_h_
