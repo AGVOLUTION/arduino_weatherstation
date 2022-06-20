@@ -1,3 +1,13 @@
+## Wie viel hat es kürzlich auf meinem Feld tatsächlich geregnet?
+_What was the last on-site rain amount on my farm?_
+## Ist die Temperatur im Pflanzenbestand die selbe, wie die der nächsten Wetterstation?
+_Does the temperature of the public weatherstation and inside the plants match?_
+
+## Wir helfen dir, kostengünstig und simpel eine eigene Wetterstation in Betrieb zu nehmen.
+Wir stellen dir die Anbindung ans Internet, Datenauswertung und -visualisierung kostenlos und unkompliziert zur Verfügung.
+
+We help you to install your own low-cost weatherstation. Connectivity and data storage, evaluation and -visualization is provided by us.
+
 # Agvolution Open-Source Weatherstation
 Embedded software and hardware design for Arduino MKR-board based Weatherstation (Atmel SAMD processors).
 
@@ -46,6 +56,29 @@ At the moment, we support:
 2. Open arduino_weatherstation.ino in Arduino IDE. Install the required library and board packages.
 3. Build + Flash.
 4. Done!
+
+## Hardware Installation
+### Solar Panel
+1. Cut the DC jack.
+![solar_1](https://user-images.githubusercontent.com/13632429/174666261-f9aac4dd-9976-445b-85a4-fafdd1a673b0.JPEG)
+2. Strip the two wires and twist the ends.
+![solar_2](https://user-images.githubusercontent.com/13632429/174666271-c05c64cd-63a2-4e83-9168-605042f8c1cb.JPEG)
+![solar_3](https://user-images.githubusercontent.com/13632429/174666278-9f59a4af-5318-47fc-9806-c758342422ec.JPEG)
+![solar_4](https://user-images.githubusercontent.com/13632429/174666282-2a1e8d7c-002a-4fbd-b8ca-f97cc6d9c8b2.JPEG)
+3. Install the JST connector at the respective clamp. Please take care of the polarity ( + red, - black ). Also, replace the screw next to the GPS module area by a hex distance bolt. You can use Loctite to fix the screws.
+![solar_5](https://user-images.githubusercontent.com/13632429/174666292-81c7bda0-93b7-40a6-bcc7-d9b1b6b8ddc8.JPEG)
+4. Conduct the solar wire through one of the housing cable mounts. Bend the copper wires 180°, insert them on the Solar Charger Module at PWR IN (+ red, - blue) and tighten the screws. To improve the durability, make sure, that the screws of the clamp not only fasten the thin copper wires, but also the plastic moulding of the cables. Mount the Solar Charger Module on the hex nut and connect the JST cable to the socket. The status LEDs should be on, when the module is placed in the sun.
+![solar_6](https://user-images.githubusercontent.com/13632429/174666316-f755650c-a8c0-45f8-86b6-fbd02ad276c8.JPEG)
+
+### Anemometer (Davis)
+1. Cut off the RJ11 connector.
+![wind_1](https://user-images.githubusercontent.com/13632429/174666321-c976e302-d07c-4214-ad5a-18a19d154ce9.JPEG)
+2. Use the 4-pin clamp in the PCB corner, labelled with 'Davis Anemometer'.
+![wind_2](https://user-images.githubusercontent.com/13632429/174666324-2c699038-8b19-429f-ba02-a3979dbad79f.JPEG)
+3. Strip the wire and drill the ends. Insert the wires into the clamp while pressing down the bolt, using a screwdriver or a similar tool. Please take care of the wire colors (Y: yellow, G: green, R: red, B: black).
+![wind_3](https://user-images.githubusercontent.com/13632429/174666335-d5b52da1-f7c4-4947-a3a5-2190b0af1439.JPEG)
+![wind_4](https://user-images.githubusercontent.com/13632429/174666338-fe48e8a7-19b4-461e-83ac-c569f308afe0.JPEG)
+
 
 ## ToDo
 * If BME76 and BME77 looses initialization (power cut) -> Detect and Re-Init ? Which registers need to be written?
