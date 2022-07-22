@@ -54,10 +54,11 @@ SOFTWARE.
 /**************************************************************
  * Transmission Interval between Data Packets (minutes)
  **************************************************************/
-#define PACKET_INTERVAL_SECONDS	3600 // in seconds
-#define WIND_SAMPLING_INTERVAL_SECONDS	900	// in seconds (every 15 min is a good energy compromise for battery stand-alone stations)
+#define PACKET_INTERVAL_SECONDS	300 // in seconds
+#define WIND_SAMPLING_INTERVAL_SECONDS	140	// in seconds (should sample >= 2x within the packet interval, thus (300s - safetyMargin) / 2)
 #define GPS_FIXTURE_TIMEOUT_SECONDS 85 // in seconds
 #define GPS_LOCATION_PACKET_INTERVAL_HOURS 168 // once a week
+#define TRH_PACKET_INTERVAL_HOURS 2 // every two hours a packet containing temperature and air humidity
 
 /*****************************************************************
  * Debugging

@@ -103,6 +103,7 @@ lpmodeWkupReason_t rtcAlarmEvent = lpmodeWkupReasonReport;
 static uint32_t ostimeLastPacketTx = 0;
 // Packet counter between location packets
 static uint32_t pcktsSinceLastLoc = 999999; // init with large value to transmit position after reset
+static uint32_t pcktsSinceLastTRh = 999999; // init with large value to transmit position after reset
 
 Wind wind(WIND_SPD_Pin, WIND_SUP_Pin, WIND_DIR_Pin); // Wind sensor handle
 static uint16_t windSpdCounter; // Global speed counter for wind speed measurement
@@ -519,6 +520,16 @@ void report() {
     digitalWrite(GPS_SUP_Pin, LOW); // Disable module
   }
 
+  // Checking whether we are supposed to transmit a T/RH (105) message
+  txPld.p105 = 0; // let's assume not to transmit T/RH data
+  #if (TRH_PACKET_INTERVAL_HOURS < 1) || (TRH_PACKET_INTERVAL_HOURS > 72)
+    #error "TRH Packet Interval must be within [1,72] hours"
+  #endif
+  if((PACKET_INTERVAL_SECONDS * pcktsSinceLastTRh) > TRH_PACKET_INTERVAL_HOURS*3600) { // transmit a T/RH packet?
+    pcktsSinceLastTRh = 0;
+    txPld.p105 = 1; // Set flag
+  }
+
   DEBUG(F("SigFox Module Boot"));
 
   // Start the module
@@ -820,6 +831,7 @@ void report() {
   rainPronamic.lastCountOstime = 0;
   rtc.getTimeSeconds(&ostimeLastPacketTx);
   pcktsSinceLastLoc++;
+  pcktsSinceLastTRh++;
 }
 
 /*  Call this method to enter low power state.
